@@ -49,8 +49,8 @@ optPois=="MulP" && WaterLily.BC!(μ₀,ntuple(zero, D))
 # BCPer!(source)
 # BCPer!(μ₀)
 
-X = transpose(reshape([i-0.5 for i=1:Ng[1] for j=1:Ng[2]],Ng[2],Ng[1]))
-Y = transpose(reshape([j-0.5 for i=1:Ng[1] for j=1:Ng[2]],Ng[2],Ng[1]))
+X = transpose(reshape([i-1.5 for i=1:Ng[1] for j=1:Ng[2]],Ng[2],Ng[1]))
+Y = transpose(reshape([j-1.5 for i=1:Ng[1] for j=1:Ng[2]],Ng[2],Ng[1]))
 
 
 source = SourceFunc(X,Y)
