@@ -175,3 +175,34 @@ function BC!(a)
         @loop a[I] = a[I-δ(j,I)] over I ∈ slice(N,N[j],j)
     end
 end
+
+
+"""
+    BCPerVec!(a)
+Apply Periodic boundary conditions to the ghost cells of a _vector_ field.
+"""
+function BCPerVec!(a)
+    N,n = size_u(a)
+    for i ∈ 1:n, j ∈ eachindex(N)
+        @loop a[I,i] = a[CIj(j,I,N[j]-1),i] over I ∈ slice(N,1,j)
+        @loop a[I,i] = a[CIj(j,I,2),i] over I ∈ slice(N,N[j],j)
+    end
+end
+
+"""
+    BCPer!(a)
+Apply Periodic boundary conditions to the ghost cells of a _scalar_ field.
+"""
+function BCPer!(a)
+    N = size(a)
+    for j ∈ eachindex(N)
+        @loop a[I] = a[CIj(j,I,N[j]-1)] over I ∈ slice(N,1,j)
+        @loop a[I] = a[CIj(j,I,2)] over I ∈ slice(N,N[j],j)
+    end
+end
+
+"""
+    CIj(j,I,jj)
+Replace jᵗʰ component of CartesianIndex to jj
+"""
+CIj(j,I::CartesianIndex{N},jj) where N = CI(ntuple(i -> i==j ? jj : I[i], N))

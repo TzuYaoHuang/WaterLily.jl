@@ -36,6 +36,8 @@ struct Poisson{T,S<:AbstractArray{T},V<:AbstractArray{T}} <: AbstractPoisson{T,S
     end
 end
 
+per = false
+
 function set_diag!(D,iD,L)
     @inside D[I] = diag(I,L)
     @inside iD[I] = abs2(D[I])<1e-8 ? 0. : inv(D[I])
@@ -106,6 +108,7 @@ function pcg!(p::Poisson;it=6)
     @inside z[I] = ϵ[I] = r[I]*p.iD[I]
     rho = r ⋅ z
     for i in 1:it
+        per && BCPer!(p.ϵ)
         @inside z[I] = mult(I,p.L,p.D,ϵ)
         alpha = rho/(z⋅ϵ)
         @loop (x[I] += alpha*ϵ[I];
@@ -141,10 +144,12 @@ function solver!(p::Poisson;log=false,tol=1e-4,itmx=1e3)
     residual!(p); r₂ = L₂(p)
     log && (res = [r₂])
     nᵖ=0
+    per && BCPer!(p.x)
     while r₂>tol && nᵖ<itmx
         smooth!(p); r₂ = L₂(p)
         log && push!(res,r₂)
         nᵖ+=1
+        per && BCPer!(p.x)
     end
     push!(p.n,nᵖ)
     log && return res
