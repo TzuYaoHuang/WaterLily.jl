@@ -28,6 +28,7 @@ function restrictL!(a,b)
     for i ∈ 1:n
         @loop a[I,i] = restrictL(I,i,b) over I ∈ CartesianIndices(map(n->2:n-1,Na))
     end
+    per && BCPerVec!(a)
 end
 restrict!(a,b) = @inside a[I] = restrict(I,b)
 prolongate!(a,b) = @inside a[I] = b[down(I)]
@@ -74,6 +75,8 @@ function Vcycle!(ml::MultiLevelPoisson;l=1)
     smooth!(coarse)
     # correct fine
     prolongate!(fine.ϵ,coarse.x)
+    BC!(fine.ϵ)
+    per && BCPer!(fine.ϵ)
     increment!(fine)
 end
 
@@ -85,11 +88,13 @@ function solver!(ml::MultiLevelPoisson;log=false,tol=1e-3,itmx=32)
     residual!(p); r₂ = L₂(p)
     log && (res = [r₂])
     nᵖ=0
+    per && BCPer!(p.x)
     while r₂>tol && nᵖ<itmx
         Vcycle!(ml)
         smooth!(p); r₂ = L₂(p)
         log && push!(res,r₂)
         nᵖ+=1
+        per && BCPer!(p.x)
     end
     push!(ml.n,nᵖ)
     log && return res

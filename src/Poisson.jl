@@ -36,7 +36,6 @@ struct Poisson{T,S<:AbstractArray{T},V<:AbstractArray{T}} <: AbstractPoisson{T,S
     end
 end
 
-per = false
 
 function set_diag!(D,iD,L)
     @inside D[I] = diag(I,L)
@@ -92,6 +91,8 @@ Note: This runs for general backends, but is _very_ slow to converge.
 """
 @fastmath Jacobi!(p;it=1) = for _ ∈ 1:it
     @inside p.ϵ[I] = p.r[I]*p.iD[I]
+    BC!(p.ϵ)
+    per && BCPer!(p.ϵ)
     increment!(p)
 end
 
@@ -106,11 +107,13 @@ Note: This runs for general backends and is the default smoother.
 function pcg!(p::Poisson;it=6)
     x,r,ϵ,z = p.x,p.r,p.ϵ,p.z
     @inside z[I] = ϵ[I] = r[I]*p.iD[I]
+    insideI = inside(x) # [insideI]
     rho = r ⋅ z
     for i in 1:it
+        BC!(ϵ)
         per && BCPer!(p.ϵ)
         @inside z[I] = mult(I,p.L,p.D,ϵ)
-        alpha = rho/(z⋅ϵ)
+        alpha = rho/(z[insideI]⋅ϵ[insideI])
         @loop (x[I] += alpha*ϵ[I];
                r[I] -= alpha*z[I]) over I ∈ inside(x)
         (i==it || abs(alpha)<1e-2) && return
