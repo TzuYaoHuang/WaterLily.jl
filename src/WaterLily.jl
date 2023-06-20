@@ -7,10 +7,10 @@ using Reexport
 @reexport using KernelAbstractions: @kernel,@index,get_backend
 
 include("Poisson.jl")
-export AbstractPoisson,Poisson,solver!,mult!
+export AbstractPoisson,Poisson,solver!,mult!,residual!,Jacobi!,smooth!,increment!,pcg!,pureSolver!
 
 include("MultiLevelPoisson.jl")
-export MultiLevelPoisson,solver!,mult!
+export MultiLevelPoisson,solver!,mult!,Vcycle!,residual!,restrict!,prolongate!
 
 include("Flow.jl")
 export Flow,mom_step!
@@ -63,6 +63,8 @@ struct Simulation
     end
 end
 
+per = true
+
 time(sim::Simulation) = sum(sim.flow.Δt[1:end-1])
 """
     sim_time(sim::Simulation)
@@ -101,5 +103,5 @@ function measure!(sim::Simulation,t=time(sim))
     update!(sim.pois)
 end
 
-export Simulation,sim_step!,sim_time,measure!
+export Simulation,sim_step!,sim_time,measure!,@inside,inside
 end # module
