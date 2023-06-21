@@ -31,7 +31,9 @@ function inside_u(dims::NTuple{N},j) where {N}
 end
 @inline inside_u(dims::NTuple{N}) where N = CartesianIndices((map(i->(2:i-1),dims)...,1:N))
 splitn(n) = Base.front(n),last(n)
+splitn_μ₁(n) = n[1:end-2],n[end-1],n[end]
 size_u(u) = splitn(size(u))
+size_μ₁(μ₁) = splitn_μ₁(size(μ₁))
 
 """
     L₂(a)
@@ -176,6 +178,17 @@ function BC!(a)
     end
 end
 
+"""
+    BCPerTen!(a)
+Apply Periodic boundary conditions to the ghost cells of a _tensor_ field.
+"""
+function BCPerTen!(a)
+    N,n1,n2 = size_μ₁(a)
+    for i ∈ 1:n1, ii∈1:n2, j ∈ eachindex(N)
+        @loop a[I,i,ii] = a[CIj(j,I,N[j]-1),i,ii] over I ∈ slice(N,1,j)
+        @loop a[I,i,ii] = a[CIj(j,I,2),i,ii] over I ∈ slice(N,N[j],j)
+    end
+end
 
 """
     BCPerVec!(a)

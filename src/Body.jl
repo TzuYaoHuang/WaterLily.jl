@@ -49,9 +49,15 @@ function measure!(a::Flow{N,T},body::AbstractBody;t=T(0),ϵ=1) where {N,T}
         end
     end
     @loop fill!(a.μ₀,a.μ₁,a.V,a.σᵥ,a.σ,I) over I ∈ inside(a.p)
+    !per && BC!(a.μ₀,zeros(SVector{N,T}))          # fill BCs
+    per && BCPerVec!(a.μ₀)
+    # per && BCPerTen!(a.μ₁)
+    per && BCPerVec!(a.V)
+    # per && BCPer!(a.σ)
+
     @inside a.σᵥ[I] = a.σᵥ[I]*div(I,a.V) # scaled divergence
     correct_div!(a.σᵥ)
-    BC!(a.μ₀,zeros(SVector{N,T}))          # fill BCs
+    # per && BCPer!(a.σᵥ)
 end
 
 # Convolution kernel and its moments
