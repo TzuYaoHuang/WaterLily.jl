@@ -8,6 +8,7 @@ using FFTW
 using Statistics
 using Interpolations
 using DelimitedFiles
+using Setfield
 
 computationID = "ThreeDVortex_256"
 
@@ -119,7 +120,7 @@ function makie_video!(makie_plot,sim,dat,obs_update!;remeasure=false,name="file.
     t₀ = round(WaterLily.sim_time(sim))
     t = range(t₀,t₀+duration;step)
     iterations = size(t)[1]
-    i = 1
+    i = 2261
     save("JLDs/"*computationID*"_"*string(i)*".jld","data",sim.flow.u)
     record(fig, name, t; framerate, compression) do tᵢ
         WaterLily.sim_step!(sim,tᵢ;remeasure)
@@ -196,7 +197,12 @@ end
 pow = 8
 
 sim = qVortex(pow=pow)
-#sim.flow.u .+= uvw;
+i=2261
+fileName = "JLDs/"*computationID*"_"*string(i)*".jld"
+uOriginAll = load(fileName)["data"]
+println(typeof(uOriginAll))
+println(size(uOriginAll))
+sim.flow.u .= uOriginAll
 
 # Create a video using Makie
 dat = sim.flow.σ[inside(sim.flow.σ)] |> Array; # CPU buffer array
@@ -210,7 +216,7 @@ end
 
 dur, step = 200, 0.1
 
-@time makie_video!(sim,dat,λ₂!,name=computationID*"_"*"qVortex.mp4",duration=200) do obs
+@time makie_video!(sim,dat,λ₂!,name=computationID*"_"*"qVortex_2.mp4",duration=200) do obs
     # plot the iso-surface of normalized λ₂ = 10⁻³, 10⁻², 10⁻¹, 10⁰
     GLMakie.contour(obs,levels=[-3,-2,-1,0],alpha=0.1,isorange=0.5)
 end
