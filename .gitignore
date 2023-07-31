@@ -2,6 +2,7 @@
 *.png
 *.gif
 *.mp4
+*.svg
 *.dat
 *.pdf
 Manifest.toml
@@ -9,3 +10,4 @@ Manifest.toml
 .vscode/
 *.jld
 .DS_Store
+*.txt
