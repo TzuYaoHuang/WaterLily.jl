@@ -20,15 +20,15 @@ function restrictML(b::Poisson)
     Na = map(i->1+i÷2,N)
     aL = similar(b.L,(Na...,n)); fill!(aL,0)
     ax = similar(b.x,Na); fill!(ax,0)
-    restrictL!(aL,b.L)
-    Poisson(ax,aL,copy(ax))
+    restrictL!(aL,b.L,perdir=b.perdir)
+    Poisson(ax,aL,copy(ax);b.perdir)
 end
-function restrictL!(a,b)
+function restrictL!(a,b;perdir=(0,))
     Na,n = size_u(a)
     for i ∈ 1:n
         @loop a[I,i] = restrictL(I,i,b) over I ∈ CartesianIndices(map(n->2:n-1,Na))
     end
-    per && BCPerVec!(a)
+    BCVecPerNeu!(a,Dirichlet=false,perdir=perdir)  # correct μ₀ @ boundaries
 end
 restrict!(a,b) = @inside a[I] = restrict(I,b)
 prolongate!(a,b) = @inside a[I] = b[down(I)]
@@ -46,20 +46,21 @@ struct MultiLevelPoisson{T,S<:AbstractArray{T},V<:AbstractArray{T}} <: AbstractP
     z::S
     levels :: Vector{Poisson{T,S,V}}
     n :: Vector{Int16}
-    function MultiLevelPoisson(x::AbstractArray{T},L::AbstractArray{T},z::AbstractArray{T},maxlevels=4) where T
-        levels = Poisson[Poisson(x,L,z)]
+    perdir :: NTuple # direction of periodic boundary condition
+    function MultiLevelPoisson(x::AbstractArray{T},L::AbstractArray{T},z::AbstractArray{T};maxlevels=4,perdir=(0,)) where T
+        levels = Poisson[Poisson(x,L,z;perdir)]
         while all(size(levels[end].x) .|> divisible) && length(levels) <= maxlevels
             push!(levels,restrictML(levels[end]))
         end
         text = "MultiLevelPoisson requires size=a2ⁿ, where n>2"
         @assert (length(levels)>2) text
-        new{T,typeof(x),typeof(L)}(x,L,z,levels,[])
+        new{T,typeof(x),typeof(L)}(x,L,z,levels,[],perdir)
     end
 end
 function update!(ml::MultiLevelPoisson)
     update!(ml.levels[1])
     for l ∈ 2:length(ml.levels)
-        restrictL!(ml.levels[l].L,ml.levels[l-1].L)
+        restrictL!(ml.levels[l].L,ml.levels[l-1].L,perdir=ml.levels[l-1].perdir)
         update!(ml.levels[l])
     end
 end
@@ -75,8 +76,7 @@ function Vcycle!(ml::MultiLevelPoisson;l=1)
     smooth!(coarse)
     # correct fine
     prolongate!(fine.ϵ,coarse.x)
-    BC!(fine.ϵ)
-    per && BCPer!(fine.ϵ)
+    BCPerNeu!(fine.ϵ, perdir=fine.perdir)
     increment!(fine)
 end
 
@@ -85,17 +85,17 @@ residual!(ml::MultiLevelPoisson,x) = residual!(ml.levels[1],x)
 
 function solver!(ml::MultiLevelPoisson;log=false,tol=1e-3,itmx=32)
     p = ml.levels[1]
+    BCPerNeu!(p.x,perdir=p.perdir)
     residual!(p); r₂ = L₂(p)
     log && (res = [r₂])
     nᵖ=0
-    per && BCPer!(p.x)
     while r₂>tol && nᵖ<itmx
         Vcycle!(ml)
         smooth!(p); r₂ = L₂(p)
         log && push!(res,r₂)
         nᵖ+=1
-        per && BCPer!(p.x)
     end
+    BCPerNeu!(p.x,perdir=p.perdir)
     push!(ml.n,nᵖ)
     log && return res
 end

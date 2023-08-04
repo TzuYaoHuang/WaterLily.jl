@@ -219,3 +219,36 @@ end
 Replace jᵗʰ component of CartesianIndex to jj
 """
 CIj(j,I::CartesianIndex{N},jj) where N = CI(ntuple(i -> i==j ? jj : I[i], N))
+
+
+function BCPerNeu!(a;perdir=(0,))
+    N = size(a)
+    for j ∈ eachindex(N)
+        if j in perdir
+            @loop a[I] = a[CIj(j,I,N[j]-1)] over I ∈ slice(N,1,j)
+            @loop a[I] = a[CIj(j,I,2)] over I ∈ slice(N,N[j],j)
+        else
+            @loop a[I] = a[I+δ(j,I)] over I ∈ slice(N,1,j)
+            @loop a[I] = a[I-δ(j,I)] over I ∈ slice(N,N[j],j)
+        end
+    end
+end
+
+function BCVecPerNeu!(a::AbstractArray{T,NN};Dirichlet=false, A=zeros(T,NN),f=1,perdir=(0,)) where {NN,T}
+    N,n = size_u(a)
+    for i ∈ 1:n, j ∈ 1:n
+        if j in perdir
+            @loop a[I,i] = a[CIj(j,I,N[j]-1),i] over I ∈ slice(N,1,j)
+            @loop a[I,i] = a[CIj(j,I,2),i] over I ∈ slice(N,N[j],j)
+        else
+            if (i==j)&&Dirichlet # Normal direction, Dirichlet
+                for s ∈ (1,2,N[j])
+                    @loop a[I,i] = f*A[i] over I ∈ slice(N,s,j)
+                end
+            else    # Tangential directions, Neumann
+                @loop a[I,i] = a[I+δ(j,I),i] over I ∈ slice(N,1,j)
+                @loop a[I,i] = a[I-δ(j,I),i] over I ∈ slice(N,N[j],j)
+            end
+        end
+    end
+end

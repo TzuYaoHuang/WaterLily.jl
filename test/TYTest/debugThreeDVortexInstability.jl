@@ -10,7 +10,7 @@ using Interpolations
 using DelimitedFiles
 using Setfield
 
-computationID = "ThreeDVortex_256"
+computationID = "ThreeDVortex_128"
 
 inside(a::AbstractArray) = CartesianIndices(map(ax->first(ax)+1:last(ax)-1,axes(a)))
 @inline CI(a...) = CartesianIndex(a...)
@@ -121,13 +121,14 @@ function makie_video!(makie_plot,sim,dat,obs_update!;remeasure=false,name="file.
     t = range(t₀,t₀+duration;step)
     iterations = size(t)[1]
     i = 2261
+    i = 0
     save("JLDs/"*computationID*"_"*string(i)*".jld","data",sim.flow.u)
     record(fig, name, t; framerate, compression) do tᵢ
         WaterLily.sim_step!(sim,tᵢ;remeasure)
         obs[] = obs_update!(dat,sim)
         i += 1
         ((i%10) == 1) && save("JLDs/"*computationID*"_"*string(i)*".jld","data",sim.flow.u)
-        println("simulation ",round(Int,(tᵢ-t₀)/duration*100),"% complete")
+        ((i%10) == 1) && println("simulation ",round(Int,(tᵢ-t₀)/duration*100),"% complete")
     end
     return fig
 end
@@ -194,15 +195,15 @@ function qVortex(; pow=8, Re=4000, T=Float32, mem=Array)
     return WaterLily.Simulation((Lp, Lp, Lp), (0, 0, 0), delta0; U, uλ, ν, T, mem)
 end
 
-pow = 8
+pow = 7
 
 sim = qVortex(pow=pow)
-i=2261
-fileName = "JLDs/"*computationID*"_"*string(i)*".jld"
-uOriginAll = load(fileName)["data"]
-println(typeof(uOriginAll))
-println(size(uOriginAll))
-sim.flow.u .= uOriginAll
+# i=2261
+# fileName = "JLDs/"*computationID*"_"*string(i)*".jld"
+# uOriginAll = load(fileName)["data"]
+# println(typeof(uOriginAll))
+# println(size(uOriginAll))
+# sim.flow.u .= uOriginAll
 
 # Create a video using Makie
 dat = sim.flow.σ[inside(sim.flow.σ)] |> Array; # CPU buffer array

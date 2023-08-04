@@ -30,15 +30,20 @@ function median(a,b,c)
     return a
 end
 
-function conv_diff!(r,u,Φ;ν=0.1)
+function conv_diff!(r,u,Φ;ν=0.1,perdir=(0,))
     r .= 0.
     N,n = size_u(u)
     for i ∈ 1:n, j ∈ 1:n
-        !per && lowBoundary!(r,u,Φ,ν,i,j,N)
-        per && lowBoundaryPer!(r,u,Φ,ν,i,j,N)
+        # if it is periodic direction
+        tagper = (j in perdir)
+        # treatment for bottom boundary with BCs
+        !tagper && lowBoundary!(r,u,Φ,ν,i,j,N)
+        tagper && lowBoundaryPer!(r,u,Φ,ν,i,j,N)
+        # inner cells
         innerCell!(r,u,Φ,ν,i,j,N)
-        !per && upperBoundary!(r,u,Φ,ν,i,j,N)
-        per && upperBoundaryPer!(r,u,Φ,ν,i,j,N)
+        # treatment for upper boundary with BCs
+        !tagper && upperBoundary!(r,u,Φ,ν,i,j,N)
+        tagper && upperBoundaryPer!(r,u,Φ,ν,i,j,N)
     end
 end
 
@@ -86,18 +91,18 @@ struct Flow{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}, Tf<:AbstractArray{
     U :: NTuple{D, T} # domain boundary values
     Δt:: Vector{T} # time step (stored in CPU memory)
     ν :: T # kinematic viscosity
-    function Flow(N::NTuple{D}, U::NTuple{D}; f=Array, Δt=0.25, ν=0., uλ::Function=(i, x) -> 0., T=Float64) where D
+    perdir :: NTuple # direction of periodic direction
+    function Flow(N::NTuple{D}, U::NTuple{D}; f=Array, Δt=0.25, ν=0., uλ::Function=(i, x) -> 0., T=Float64, perdir=(0,)) where D
         Ng = N .+ 2
         Nd = (Ng..., D)
         u = Array{T}(undef, Nd...) |> f; apply!(uλ, u); 
-        !per && BC!(u, U); per && BCPerVec!(u)
+        BCVecPerNeu!(u;Dirichlet=true, A=U, perdir=perdir)
         u⁰ = copy(u)
         fv, p, σ = zeros(T, Nd) |> f, zeros(T, Ng) |> f, zeros(T, Ng) |> f
         V, σᵥ = zeros(T, Nd) |> f, zeros(T, Ng) |> f
-        μ₀ = ones(T, Nd) |> f
-        !per && BC!(μ₀,ntuple(zero, D))
+        μ₀ = ones(T, Nd) |> f  # Boundary condition will take care all the stuff, no more zero μ₀
         μ₁ = zeros(T, Ng..., D, D) |> f
-        new{D,T,typeof(p),typeof(u),typeof(μ₁)}(u,u⁰,fv,p,σ,V,σᵥ,μ₀,μ₁,U,T[Δt],ν)
+        new{D,T,typeof(p),typeof(u),typeof(μ₁)}(u,u⁰,fv,p,σ,V,σᵥ,μ₀,μ₁,U,T[Δt],ν,perdir)
     end
 end
 
@@ -125,17 +130,17 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
 @fastmath function mom_step!(a::Flow,b::AbstractPoisson)
     a.u⁰ .= a.u; a.u .= 0
     # predictor u → u'
-    conv_diff!(a.f,a.u⁰,a.σ,ν=a.ν)
+    conv_diff!(a.f,a.u⁰,a.σ,ν=a.ν, perdir=a.perdir)
     BDIM!(a); 
-    !per && BC!(a.u,a.U); per && BCPerVec!(a.u)
+    BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
     project!(a,b); 
-    !per && BC!(a.u,a.U); per && BCPerVec!(a.u)
+    BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
     # corrector u → u¹
-    conv_diff!(a.f,a.u,a.σ,ν=a.ν)
+    conv_diff!(a.f,a.u,a.σ,ν=a.ν, perdir=a.perdir)
     BDIM!(a); 
-    !per && BC!(a.u,a.U,2); per && BCPerVec!(a.u)
+    BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, f=2, perdir=a.perdir)
     project!(a,b,2); a.u ./= 2; 
-    !per && BC!(a.u,a.U); per && BCPerVec!(a.u)
+    BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
     push!(a.Δt,CFL(a))
 end
 

@@ -11,3 +11,4 @@ Manifest.toml
 *.jld
 .DS_Store
 *.txt
+lotus_oop-master/*

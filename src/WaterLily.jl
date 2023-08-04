@@ -54,16 +54,15 @@ struct Simulation
     body :: AbstractBody
     pois :: AbstractPoisson
     function Simulation(dims::NTuple{N}, u_BC::NTuple{N}, L::Number;
-                        Δt=0.25, ν=0., U=√sum(abs2,u_BC), ϵ=1,
+                        Δt=0.25, ν=0., U=√sum(abs2,u_BC), ϵ=1, perdir=(0,),
                         uλ::Function=(i,x)->u_BC[i],
                         body::AbstractBody=NoBody(),T=Float32,mem=Array) where N
-        flow = Flow(dims,u_BC;uλ,Δt,ν,T,f=mem)
-        measure!(flow,body;ϵ)
-        new(U,L,ϵ,flow,body,MultiLevelPoisson(flow.p,flow.μ₀,flow.σ))
+        flow = Flow(dims,u_BC;uλ,Δt,ν,T,f=mem,perdir=perdir)
+        measure!(flow,body;ϵ,perdir=perdir)
+        new(U,L,ϵ,flow,body,MultiLevelPoisson(flow.p,flow.μ₀,flow.σ;perdir=perdir))
     end
 end
 
-per = true
 
 time(sim::Simulation) = sum(sim.flow.Δt[1:end-1])
 """
@@ -99,7 +98,7 @@ end
 Measure a dynamic `body` to update the `flow` and `pois` coefficients.
 """
 function measure!(sim::Simulation,t=time(sim))
-    measure!(sim.flow,sim.body;t,ϵ=sim.ϵ)
+    measure!(sim.flow,sim.body;t,ϵ=sim.ϵ,perdir=sim.flow.perdir)
     update!(sim.pois)
 end
 

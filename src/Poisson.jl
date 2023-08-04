@@ -27,12 +27,13 @@ struct Poisson{T,S<:AbstractArray{T},V<:AbstractArray{T}} <: AbstractPoisson{T,S
     r :: S # residual
     z :: S # source
     n :: Vector{Int16} # pressure solver iterations
-    function Poisson(x::AbstractArray{T},L::AbstractArray{T},z::AbstractArray{T}) where T
+    perdir :: NTuple # direction of periodic boundary condition
+    function Poisson(x::AbstractArray{T},L::AbstractArray{T},z::AbstractArray{T};perdir=(0,)) where T
         @assert axes(x) == axes(z) && axes(x) == Base.front(axes(L)) && last(axes(L)) == eachindex(axes(x))
         r = similar(x); fill!(r,0)
         ϵ,D,iD = copy(r),copy(r),copy(r)
         set_diag!(D,iD,L)
-        new{T,typeof(x),typeof(L)}(L,D,iD,x,ϵ,r,z,[])
+        new{T,typeof(x),typeof(L)}(L,D,iD,x,ϵ,r,z,[],perdir)
     end
 end
 
@@ -91,8 +92,7 @@ Note: This runs for general backends, but is _very_ slow to converge.
 """
 @fastmath Jacobi!(p;it=1) = for _ ∈ 1:it
     @inside p.ϵ[I] = p.r[I]*p.iD[I]
-    BC!(p.ϵ)
-    per && BCPer!(p.ϵ)
+    BCPerNeu!(p.ϵ,perdir=p.perdir)
     increment!(p)
 end
 
@@ -110,8 +110,7 @@ function pcg!(p::Poisson;it=6)
     insideI = inside(x) # [insideI]
     rho = r ⋅ z
     for i in 1:it
-        BC!(ϵ)
-        per && BCPer!(p.ϵ)
+        BCPerNeu!(ϵ,perdir=p.perdir)
         @inside z[I] = mult(I,p.L,p.D,ϵ)
         alpha = rho/(z[insideI]⋅ϵ[insideI])
         @loop (x[I] += alpha*ϵ[I];
@@ -144,16 +143,16 @@ Approximate iterative solver for the Poisson matrix equation `Ax=b`.
   - `itmx`: Maximum number of iterations.
 """
 function solver!(p::Poisson;log=false,tol=1e-4,itmx=1e3)
+    BCPerNeu!(p.x,perdir=p.perdir)
     residual!(p); r₂ = L₂(p)
     log && (res = [r₂])
     nᵖ=0
-    per && BCPer!(p.x)
     while r₂>tol && nᵖ<itmx
         smooth!(p); r₂ = L₂(p)
         log && push!(res,r₂)
         nᵖ+=1
-        per && BCPer!(p.x)
     end
+    BCPerNeu!(p.x,perdir=p.perdir)
     push!(p.n,nᵖ)
     log && return res
 end
