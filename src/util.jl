@@ -120,6 +120,13 @@ Location in space of the cell at CartesianIndex `I` at face `i`.
 Using `i=0` returns the cell center s.t. `loc = I`.
 """
 @inline loc(i,I::CartesianIndex{N},T=Float64) where N = SVector{N,T}(I.I .- 0.5 .* δ(i,I).I)
+"""
+    loc(I)
+
+Location in space of the cell corner at CartesianIndex `I`
+`loc = I-0.5`
+"""
+@inline loc(I::CartesianIndex{N},T=Float64) where N = SVector{N,T}(I.I .- 0.5)
 
 """
     apply!(f, c)
