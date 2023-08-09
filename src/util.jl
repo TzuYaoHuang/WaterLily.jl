@@ -34,6 +34,9 @@ splitn(n) = Base.front(n),last(n)
 splitn_μ₁(n) = n[1:end-2],n[end-1],n[end]
 size_u(u) = splitn(size(u))
 size_μ₁(μ₁) = splitn_μ₁(size(μ₁))
+function inside_uWB(dims::NTuple{N},j) where {N}
+    CartesianIndices(ntuple( i-> i==j ? (2:dims[i]) : (2:dims[i]-1), N))
+end
 
 """
     L₂(a)

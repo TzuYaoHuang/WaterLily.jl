@@ -1,20 +1,29 @@
-using  ForwardDiff
+using ForwardDiff
 using LinearAlgebra
 
 struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
     f :: Sf  # cell-averaged color function
     f⁰:: Sf  # previous cell-averaged color function
+    fᶠ:: Vf  # f @ faces when 
     ϕᶠ:: Vf  # flux of color function
     n̂ :: Vf  # norm of the surfaces in cell
     α :: Sf  # intercept of intercace in cell: norm ⋅ x = α
-    function cVOF(N::NTuple{D}; arr=Array)
+    c̄ :: Sf  # color function
+    perdir :: NTuple  # periodic directions
+    dirdir :: NTuple  # Dirichlet directions
+    function cVOF(N::NTuple{D}; arr=Array, InterfaceSDF::Function=(x) -> 5-x[1], T=Float64, perdir=(0,), dirdir=(0,)) where D
         Ng = N .+ 2
         Nd = (Ng..., D)
         f = ones(T, Ng) |> arr
-        f⁰ = copy(f)
+        fᶠ = zeros(T, Nd) |> arr
         ϕᶠ = zeros(T, Nd) |> arr
         n̂ = zeros(T, Nd) |> arr
         α = zeros(T, Ng) |> arr
+        c̄ = zeros(T, Ng) |> arr
+        applyVOF!(InterfaceSDF,f,α,n̂)
+        BCVOF!(f,α,n̂;perdir=perdir,dirdir=dirdir)
+        f⁰ = copy(f)
+        new{D,T,typeof(f),typeof(n̂)}(f,f⁰,fᶠ,ϕᶠ,n̂,α,c̄,perdir,dirdir)
     end
 end
 
@@ -25,8 +34,23 @@ function DistanceNormalFromSDF!(I,FreeSurfsdf,f,α,n̂)
     f[I] = vof_vol(n̂[I,:]...,-α[I])
 end
 
+function applyVOF!(FreeSurfsdf,f,α,n̂)
+    N,n = size_u(n̂)
+    @loop (
+        α[I] = FreeSurfsdf(loc(I));
+        if abs2(α[I])>n 
+            f[I] = ifelse(α[I]>0,0,1)
+        else
+            n̂[I,:] = ForwardDiff.gradient(FreeSurfsdf,(loc(0,I)+loc(I))*0.5);
+            n̂[I,:] /= norm(n̂[I,:]);
+            f[I] = vof_vol(n̂[I,:]...,-α[I]);
+        end
+    ) over I ∈ inside(f)
+end
 
-function BCVOF!(f,α,n̂,perdir=(0,),dirdir=(0,))
+
+
+function BCVOF!(f,α,n̂;perdir=(0,),dirdir=(0,))
     N,n = size_u(n̂)
     for j ∈ 1:n
         if j in perdir
@@ -52,12 +76,6 @@ function BCVOF!(f,α,n̂,perdir=(0,),dirdir=(0,))
         end
     end
 end
-
-
-
-
-
-
 
 
 
@@ -207,68 +225,86 @@ function vof_height(I, f, i)
     return h
 end
 
-function vof_reconstruct!(f,α,n̂)
+function vof_reconstruct!(f,α,n̂;perdir=(0,),dirdir=(0,))
     N,n = size_u(n̂)
-    @loop (
-        fc = f[I];
-        if (fc==0.0 || fc==1.0)
-            α[I] = fc
-        else
-            for d ∈ 1:n
-                n̂[I,d] = (f[I-δ[d,I]]-f[I+δ[d,I]])*0.5
-            end
+    aaa=0
+    @loop α[I],n̂[I,:] = vof_reconstruct!(I,f,α,n̂,N,n) over I ∈ inside(f)
+    # for I in inside(f)
+    #     α[I],n̂[I,:] = vof_reconstruct!(I,f,α,n̂,N,n)
+    # end
+    BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
+end
 
-            dc = argmax(abs.(n̂[I,:]))
-            for d ∈ 1:n
-                if (d == dc)
-                    n̂[I,d] = copysign(1.0,n̂[I,d])
-                else
-                    hu = vof_height(I+δ(d,I), f, dc)
-                    hc = vof_height(I       , f, dc)
-                    hd = vof_height(I-δ(d,I), f, dc)
-                    n̂[I,d] = -(hu-hd)*0.5
-                    if I[d] == N[d]-1
-                        n̂[I,d] = -(hc - hd)
-                    elseif I[d] == 2
-                        n̂[I,d] = -(hu - hc)
-                    elseif (hu+hd==0.0 || hu+hd==6.0)
-                        n̂[I,d] = 0.0
-                    elseif abs(n̂[I,d]) > 0.5
-                        if (n̂[I,d]*(fc-0.5) >= 0.0)
-                            n̂[I,d] = -(hu - hc)
-                        else
-                            n̂[I,d] = -(hc - hd)
-                        end
+function vof_reconstruct!(I,f,α,n̂,N,n)
+    fc = f[I]
+    nhat = n̂[I,:]
+    alpha = 0
+    if (fc==0.0 || fc==1.0)
+        alpha = fc
+    else
+        for d ∈ 1:n
+            nhat[d] = (f[I-δ(d,I)]-f[I+δ(d,I)])*0.5
+        end
+        dc = argmax(abs.(nhat))
+        for d ∈ 1:n
+            if (d == dc)
+                nhat[d] = copysign(1.0,nhat[d])
+            else
+                hu = vof_height(I+δ(d,I), f, dc)
+                hc = vof_height(I       , f, dc)
+                hd = vof_height(I-δ(d,I), f, dc)
+                nhat[d] = -(hu-hd)*0.5
+                if I[d] == N[d]-1
+                    nhat[d] = -(hc - hd)
+                elseif I[d] == 2
+                    nhat[d] = -(hu - hc)
+                elseif (hu+hd==0.0 || hu+hd==6.0)
+                    nhat .= 0.0
+                elseif abs(nhat[d]) > 0.5
+                    if (nhat[d]*(fc-0.5) >= 0.0)
+                        nhat[d] = -(hu - hc)
+                    else
+                        nhat[d] = -(hc - hd)
                     end
                 end
             end
-            α[I] = vof_int(n̂[I,1],n̂[I,2],n̂[I,3], fc)
         end
-    ) over I ∈ inside(f)
+        try
+            alpha = vof_int(nhat[1],nhat[2],nhat[3], fc)
+        catch y
+            print(I," ",nhat," ",fc,"\n")
+            print(vof_int(1.0,0.0,0.0,0.0))
+        end
+    end
+    return alpha,nhat
 end
 
-function vof_flux!(d, f_in, v_in, flux)
-    flux[:,:,:,d] .= 0.0
-    @loop (
-        v = v_in[IFace,d];
-        ICell = IFace;
-        if v == 0.0
+function vof_flux!(d,f,α,n̂,v,ϕᶠ)
+    N,n = size_u(n̂)
+    ϕᶠ[:,:,:,d] .= 0.0
+    @loop ϕᶠ[IFace,d] = vof_flux(IFace, d,f,α,n̂,v) over IFace ∈ inside_uWB(N,d)
+end
+
+function vof_flux(IFace::CartesianIndex, d,fIn,α,n̂,dl)
+    v = dl[IFace,d];
+    ICell = IFace;
+    flux = 0.0
+    if v == 0.0
+    else
+        if (v > 0.0) ICell -= δ(d,IFace) end
+        f = fIn[ICell]
+        nTar = n̂[ICell,:]
+        if (sum(abs.(nTar))==0.0 || f == 0.0 || f == 1.0)
+            flux = f*v
         else
-            if (v > 0.0) ICell -= δ(d,IFace) end
-            f = f_in[ICell]
-            nTar = n̂[ICell,:]
-            if (sum(abs.(nTar)==0.0 || f == 0.0 || f == 1.0))
-                flux[IFace,d] = f*v
-            else
-                n1, n2, n3, nd = n̂[ICell,1],n̂[ICell,2],n̂[ICell,3],n̂[ICell,d]
-                dl = v
-                a = α[ICell]
-                if (dl > 0.0) a -= nd*(1.0-dl) end
-                nd *= abs(dl)
-                flux[IFace,d] = vof_vol(n1, n2, n3, a)*v
-            end
+            dl = v
+            a = α[ICell]
+            if (dl > 0.0) a -= n̂[ICell,d]*(1.0-dl) end
+            n̂[ICell,d] *= abs(dl)
+            flux = vof_vol(n̂[ICell,1],n̂[ICell,2],n̂[ICell,3], a)*v
         end
-    ) over IFace ∈ inside(f)
+    end
+    return flux
 end
 
 function vof_face!(f)
@@ -279,34 +315,41 @@ function vof_face!(f)
     end
 end
 
-function freeint_update!(time, m, u, u0)
-    N,n = size_u(u)
-    strang = 0
-    f = f0
-    g0 = ifelse.(f0 <= 0.5, 0, 1)
-    if (m==1) strang = strang+1 end
-    for d2 ∈ 1:n
-        d = mod(d2+strang,n)+1
-        vof_reconstruct!(f)
-        v = (u[:,:,:,d]+u0[:,:,:,d])*0.5dt
-        vof_flux!(d,f,v,flux)
-        f -= v+g0*ddx_v
-    end
-    vof_face!(f)
-    if m==2
-        flob_find!(f, cutoff)
-        v = 1.0 .-f
-        flob_find!(v, cutoff)
-        f = 1.0 .-v
-    end
-    f0=f
-end
 
-function freeint_update!(δt, f, f⁰, n̂, α, u, u⁰)
+function freeint_update!(δt, f, f⁰, n̂, α, u, u⁰, ϕᶠ, c̄;perdir=(0,),dirdir=(0,))
+    tol = 1e-10
     N,n = size_u(u)
-    dl = 0.5δt*(u+u⁰)
-    for d2 ∈ 1:n
-        vof_reconstruct!(f)
-        
+    f .= f⁰
+    insideI = inside(f)
+
+    δl = 0.5δt*(u+u⁰)
+    # Gil Strang splitting: see https://www.asc.tuwien.ac.at/~winfried/splitting/
+    opOrder = [3,2,1,2,3]
+    opCoeff = [0.5,0.5,1.0,0.5,0.5]
+
+    c̄ .= ifelse.(f .<= 0.5, 0, 1)  # inside the operator or not????
+    for iOp ∈ CartesianIndices(opOrder)
+        d = opOrder[iOp]
+        dl = opCoeff[iOp]*δl
+        vof_reconstruct!(f,α,n̂,perdir=perdir,dirdir=dirdir)
+        vof_flux!(d,f,α,n̂,dl,ϕᶠ)
+        @loop (
+            f[I] += -∂(d,I,ϕᶠ) + c̄[I]*∂(d,I,dl)
+        ) over I ∈ inside(f)
+
+        maxf, maxid = findmax(f[insideI])
+        minf, minid = findmin(f[insideI])
+        if maxf-1 > tol
+            throw(DomainError(maxf, "f$maxid ∉ [0,1]"))
+        end
+        if minf < -tol
+            throw(DomainError(minf, "f$minid ∉ [0,1]"))
+        end
+        # clamp!(f,0.0,1.0)
+        f[abs.(f).<=tol] .= 0.0
+        f[abs.(f .-1).<=tol] .= 1.0
+
+        BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
     end
+    f⁰ .= f
 end
