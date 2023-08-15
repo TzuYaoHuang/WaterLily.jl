@@ -3,37 +3,29 @@ using LinearAlgebra
 
 struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
     f :: Sf  # cell-averaged color function
-    f⁰:: Sf  # previous cell-averaged color function
-    fᶠ:: Vf  # f @ faces when 
-    ϕᶠ:: Vf  # flux of color function
+    fᶠ:: Sf  # place to store flux or smoothed vof
     n̂ :: Vf  # norm of the surfaces in cell
     α :: Sf  # intercept of intercace in cell: norm ⋅ x = α
-    c̄ :: Sf  # color function
+    c̄ :: AbstractArray{Int8}  # color function
     perdir :: NTuple  # periodic directions
     dirdir :: NTuple  # Dirichlet directions
-    function cVOF(N::NTuple{D}; arr=Array, InterfaceSDF::Function=(x) -> 5-x[1], T=Float64, perdir=(0,), dirdir=(0,)) where D
+    function cVOF(N::NTuple{D}, n̂place, αplace; arr=Array, InterfaceSDF::Function=(x) -> 5-x[1], T=Float64, perdir=(0,), dirdir=(0,)) where D
         Ng = N .+ 2
-        Nd = (Ng..., D)
         f = ones(T, Ng) |> arr
-        fᶠ = zeros(T, Nd) |> arr
-        ϕᶠ = zeros(T, Nd) |> arr
-        n̂ = zeros(T, Nd) |> arr
-        α = zeros(T, Ng) |> arr
-        c̄ = zeros(T, Ng) |> arr
+        fᶠ = copy(f)
+        n̂ = n̂place; α = αplace
+        c̄ = zeros(Int8, Ng) |> arr
         applyVOF!(InterfaceSDF,f,α,n̂)
         BCVOF!(f,α,n̂;perdir=perdir,dirdir=dirdir)
-        f⁰ = copy(f)
-        new{D,T,typeof(f),typeof(n̂)}(f,f⁰,fᶠ,ϕᶠ,n̂,α,c̄,perdir,dirdir)
+        new{D,T,typeof(f),typeof(n̂)}(f,fᶠ,n̂,α,c̄,perdir,dirdir)
     end
 end
 
-function DistanceNormalFromSDF!(I,FreeSurfsdf,f,α,n̂)
-    α[I] = FreeSurfsdf(loc(I))
-    n = ForwardDiff.gradient(FreeSurfsdf,loc(0,I))
-    n̂[I,:] = n/norm(n)
-    f[I] = vof_vol(n̂[I,:]...,-α[I])
-end
+"""
+    applyVOF!(FreeSurfsdf,f,α,n̂)
 
+Given a distance function (FreeSurfsdf) for the initial free-surface, yield the volume fraction (f), intercept (α), normal (n̂)
+"""
 function applyVOF!(FreeSurfsdf,f,α,n̂)
     N,n = size_u(n̂)
     @loop (
@@ -42,8 +34,8 @@ function applyVOF!(FreeSurfsdf,f,α,n̂)
             f[I] = ifelse(α[I]>0,0,1)
         else
             n̂[I,:] = ForwardDiff.gradient(FreeSurfsdf,(loc(0,I)+loc(I))*0.5);
-            n̂[I,:] /= norm(n̂[I,:]);
-            f[I] = vof_vol(n̂[I,:]...,-α[I]);
+            n̂[I,:] /= (n̂[I,1]^2+n̂[I,2]^2+n̂[I,3]^2)^0.5;
+            f[I] = vof_vol(n̂[I,1],n̂[I,2],n̂[I,3],-α[I]);
         end
     ) over I ∈ inside(f)
 end
@@ -71,8 +63,8 @@ function BCVOF!(f,α,n̂;perdir=(0,),dirdir=(0,))
                 @loop n̂[I,i] = mulp*n̂[I+δ(j,I),i] over I ∈ slice(N,1,j)
                 @loop n̂[I,i] = mulp*n̂[I-δ(j,I),i] over I ∈ slice(N,N[j],j)
             end
-            @loop α[I] = vof_int(n̂[I,:]...,f[I]) over I ∈ slice(N,1,j)
-            @loop α[I] = vof_int(n̂[I,:]...,f[I]) over I ∈ slice(N,N[j],j)
+            @loop α[I] = vof_int(n̂[I,1],n̂[I,2],n̂[I,3],f[I]) over I ∈ slice(N,1,j)
+            @loop α[I] = vof_int(n̂[I,1],n̂[I,2],n̂[I,3],f[I]) over I ∈ slice(N,N[j],j)
         end
     end
 end
@@ -141,15 +133,17 @@ function proot(c0, c1, c2, c3)
     return proot
 end
 
-function sort3(n1, n2, n3)
-    n = [n1, n2, n3]
-    l = argmin(n)  # Find the index of the minimum value in n
-    m1 = n[l]
-    m = [n[1:l-1]; n[l+1:end]]
-    m2 = minimum(m)
-    m3 = maximum(m)
+"""
+    sort3(a, b, c)
 
-    return m1, m2, m3
+Sort three numbers with bubble sort algorithm to avoid too much memory assignment due to array creation.
+see https://codereview.stackexchange.com/a/91920
+"""
+function sort3(a, b, c)
+    if (a>c) a,c = c,a end
+    if (a>b) a,b = b,a end
+    if (b>c) b,c = c,b end
+    return a,b,c
 end
 
 """
@@ -227,18 +221,14 @@ end
 
 function vof_reconstruct!(f,α,n̂;perdir=(0,),dirdir=(0,))
     N,n = size_u(n̂)
-    aaa=0
     @loop α[I],n̂[I,:] = vof_reconstruct!(I,f,α,n̂,N,n) over I ∈ inside(f)
-    # for I in inside(f)
-    #     α[I],n̂[I,:] = vof_reconstruct!(I,f,α,n̂,N,n)
-    # end
     BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
 end
 
 function vof_reconstruct!(I,f,α,n̂,N,n)
     fc = f[I]
     nhat = n̂[I,:]
-    alpha = 0
+    alpha = α[I]
     if (fc==0.0 || fc==1.0)
         alpha = fc
     else
@@ -269,32 +259,26 @@ function vof_reconstruct!(I,f,α,n̂,N,n)
                 end
             end
         end
-        try
-            alpha = vof_int(nhat[1],nhat[2],nhat[3], fc)
-        catch y
-            print(I," ",nhat," ",fc,"\n")
-            print(vof_int(1.0,0.0,0.0,0.0))
-        end
+        alpha = vof_int(nhat[1],nhat[2],nhat[3], fc)
     end
     return alpha,nhat
 end
 
-function vof_flux!(d,f,α,n̂,v,ϕᶠ)
+function vof_flux!(d,f,α,n̂,u,u⁰,uMulp,fᶠ)
     N,n = size_u(n̂)
-    ϕᶠ[:,:,:,d] .= 0.0
-    @loop ϕᶠ[IFace,d] = vof_flux(IFace, d,f,α,n̂,v) over IFace ∈ inside_uWB(N,d)
+    fᶠ .= 0.0
+    @loop fᶠ[IFace] = vof_flux(IFace, d,f,α,n̂,0.5*(u[IFace,d]+u⁰[IFace,d])*uMulp) over IFace ∈ inside_uWB(N,d)
 end
 
 function vof_flux(IFace::CartesianIndex, d,fIn,α,n̂,dl)
-    v = dl[IFace,d];
+    v = dl;
     ICell = IFace;
     flux = 0.0
     if v == 0.0
     else
         if (v > 0.0) ICell -= δ(d,IFace) end
         f = fIn[ICell]
-        nTar = n̂[ICell,:]
-        if (sum(abs.(nTar))==0.0 || f == 0.0 || f == 1.0)
+        if ((abs(n̂[I,1])+abs(n̂[I,2])+abs(n̂[I,3]))==0.0 || f == 0.0 || f == 1.0)
             flux = f*v
         else
             dl = v
@@ -316,13 +300,11 @@ function vof_face!(f)
 end
 
 
-function freeint_update!(δt, f, f⁰, n̂, α, u, u⁰, ϕᶠ, c̄;perdir=(0,),dirdir=(0,))
+function freeint_update!(δt, f, fᶠ, n̂, α, u, u⁰, c̄;perdir=(0,),dirdir=(0,))
     tol = 1e-10
     N,n = size_u(u)
-    f .= f⁰
     insideI = inside(f)
 
-    δl = 0.5δt*(u+u⁰)
     # Gil Strang splitting: see https://www.asc.tuwien.ac.at/~winfried/splitting/
     opOrder = [3,2,1,2,3]
     opCoeff = [0.5,0.5,1.0,0.5,0.5]
@@ -330,11 +312,11 @@ function freeint_update!(δt, f, f⁰, n̂, α, u, u⁰, ϕᶠ, c̄;perdir=(0,),
     c̄ .= ifelse.(f .<= 0.5, 0, 1)  # inside the operator or not????
     for iOp ∈ CartesianIndices(opOrder)
         d = opOrder[iOp]
-        dl = opCoeff[iOp]*δl
+        uMulp = opCoeff[iOp]*δt
         vof_reconstruct!(f,α,n̂,perdir=perdir,dirdir=dirdir)
-        vof_flux!(d,f,α,n̂,dl,ϕᶠ)
+        vof_flux!(d,f,α,n̂,u,u⁰,uMulp,fᶠ)
         @loop (
-            f[I] += -∂(d,I,ϕᶠ) + c̄[I]*∂(d,I,dl)
+            f[I] += -∂(d,I+δ(d,I),fᶠ) + c̄[I]*(∂(d,I,u)+∂(d,I,u⁰))*0.5uMulp
         ) over I ∈ inside(f)
 
         maxf, maxid = findmax(f[insideI])
@@ -351,5 +333,5 @@ function freeint_update!(δt, f, f⁰, n̂, α, u, u⁰, ϕᶠ, c̄;perdir=(0,),
 
         BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
     end
-    f⁰ .= f
+    fᶠ .= f
 end
