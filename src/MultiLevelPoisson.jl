@@ -46,6 +46,7 @@ struct MultiLevelPoisson{T,S<:AbstractArray{T},V<:AbstractArray{T}} <: AbstractP
     z::S
     levels :: Vector{Poisson{T,S,V}}
     n :: Vector{Int16}
+    res :: Vector{T}
     perdir :: NTuple # direction of periodic boundary condition
     function MultiLevelPoisson(x::AbstractArray{T},L::AbstractArray{T},z::AbstractArray{T};maxlevels=4,perdir=(0,)) where T
         levels = Poisson[Poisson(x,L,z;perdir)]
@@ -54,7 +55,7 @@ struct MultiLevelPoisson{T,S<:AbstractArray{T},V<:AbstractArray{T}} <: AbstractP
         end
         text = "MultiLevelPoisson requires size=a2ⁿ, where n>2"
         @assert (length(levels)>2) text
-        new{T,typeof(x),typeof(L)}(x,L,z,levels,[],perdir)
+        new{T,typeof(x),typeof(L)}(x,L,z,levels,[],[],perdir)
     end
 end
 function update!(ml::MultiLevelPoisson)
@@ -97,5 +98,6 @@ function solver!(ml::MultiLevelPoisson;log=false,tol=1e-3,itmx=32)
     end
     BCPerNeu!(p.x,perdir=p.perdir)
     push!(ml.n,nᵖ)
+    push!(ml.res,r₂)
     log && return res
 end

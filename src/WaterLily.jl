@@ -24,7 +24,9 @@ export AutoBody,measure,sdf,+,-
 include("Metrics.jl")
 
 include("Multiphase.jl")
-export cVOF
+export cVOF,mom_step!
+
+abstract type AbstractSimulation end
 
 """
     Simulation(dims::NTuple, u_BC::NTuple, L::Number;
@@ -49,7 +51,7 @@ Constructor for a WaterLily.jl simulation:
 
 See files in `examples` folder for examples.
 """
-struct Simulation
+struct Simulation <: AbstractSimulation
     U :: Number # velocity scale
     L :: Number # length scale
     ϵ :: Number # kernel width
@@ -66,19 +68,42 @@ struct Simulation
     end
 end
 
+struct TwoPhaseSimulation <: AbstractSimulation
+    U :: Number # velocity scale
+    L :: Number # length scale
+    ϵ :: Number # kernel width
+    flow :: Flow
+    inter:: cVOF
+    body :: AbstractBody
+    pois :: AbstractPoisson
+    function TwoPhaseSimulation(
+                        dims::NTuple{N}, u_BC::NTuple{N}, L::Number;
+                        Δt=0.25, ν=0.,λν=15.0074,λρ=0.001206, U=√sum(abs2,u_BC), ϵ=1, 
+                        perdir=(0,), dirdir=(0,), grav=(0,0,0),
+                        uλ::Function=(i,x)->u_BC[i], 
+                        InterfaceSDF::Function=(x) -> 5-x[1],
+                        body::AbstractBody=NoBody(),T=Float32,mem=Array) where N
+        flow = Flow(dims,u_BC;uλ,Δt,ν,T,f=mem,perdir=perdir,g=grav)
+        inter= cVOF(dims,flow.f,flow.σ; arr=mem, InterfaceSDF=InterfaceSDF, T=T, perdir=flow.perdir, dirdir=dirdir,λν=λν,λρ=λρ)
+        measure!(flow,body;ϵ,perdir=perdir)
+        calculateL!(flow,inter)
+        new(U,L,ϵ,flow,inter,body,MultiLevelPoisson(flow.p,flow.μ₀,flow.σ;perdir=perdir))
+    end
+end
 
-time(sim::Simulation) = sum(sim.flow.Δt[1:end-1])
+
+time(sim::AbstractSimulation) = sum(sim.flow.Δt[1:end-1])
 """
-    sim_time(sim::Simulation)
+    sim_time(sim::AbstractSimulation)
 
 Return the current dimensionless time of the simulation `tU/L`
 where `t=sum(Δt)`, and `U`,`L` are the simulation velocity and length
 scales.
 """
-sim_time(sim::Simulation) = time(sim)*sim.U/sim.L
+sim_time(sim::AbstractSimulation) = time(sim)*sim.U/sim.L
 
 """
-    sim_step!(sim::Simulation,t_end;remeasure=true,verbose=false)
+    sim_step!(sim::AbstractSimulation,t_end;remeasure=true,verbose=false)
 
 Integrate the simulation `sim` up to dimensionless time `t_end`.
 If `remeasure=true`, the body is remeasured at every time step. 
@@ -94,9 +119,19 @@ function sim_step!(sim::Simulation,t_end;verbose=false,remeasure=true)
             ", Δt=",round(sim.flow.Δt[end],digits=3))
     end
 end
+function sim_step!(sim::TwoPhaseSimulation,t_end;verbose=false,remeasure=true)
+    t = time(sim)
+    while t < t_end*sim.L/sim.U
+        remeasure && measure!(sim,t)
+        mom_step!(sim.flow,sim.pois,sim.inter,sim.body) # evolve Flow
+        t += sim.flow.Δt[end]
+        verbose && println("tU/L=",round(t*sim.U/sim.L,digits=4),
+            ", Δt=",round(sim.flow.Δt[end],digits=3))
+    end
+end
 
 """
-    measure!(sim::Simulation,t=time(sim))
+    measure!(sim::AbstractSimulation,t=time(sim))
 
 Measure a dynamic `body` to update the `flow` and `pois` coefficients.
 """
@@ -105,5 +140,5 @@ function measure!(sim::Simulation,t=time(sim))
     update!(sim.pois)
 end
 
-export Simulation,sim_step!,sim_time,measure!,@inside,inside
+export Simulation,TwoPhaseSimulation,sim_step!,sim_time,measure!,@inside,inside
 end # module

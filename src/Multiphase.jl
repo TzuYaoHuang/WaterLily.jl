@@ -1,7 +1,7 @@
 using ForwardDiff
-using LinearAlgebra
 
 struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
+    f⁰:: Sf  # cell-averaged color function, because Heun Correction step
     f :: Sf  # cell-averaged color function
     fᶠ:: Sf  # place to store flux or smoothed vof
     n̂ :: Vf  # norm of the surfaces in cell
@@ -9,7 +9,9 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
     c̄ :: AbstractArray{Int8}  # color function
     perdir :: NTuple  # periodic directions
     dirdir :: NTuple  # Dirichlet directions
-    function cVOF(N::NTuple{D}, n̂place, αplace; arr=Array, InterfaceSDF::Function=(x) -> 5-x[1], T=Float64, perdir=(0,), dirdir=(0,)) where D
+    λν:: T   # ratio of kinematic viscosity
+    λρ:: T   # ratio of density
+    function cVOF(N::NTuple{D}, n̂place, αplace; arr=Array, InterfaceSDF::Function=(x) -> 5-x[1], T=Float64, perdir=(0,), dirdir=(0,),λν=15.0074,λρ=0.001206) where D
         Ng = N .+ 2
         f = ones(T, Ng) |> arr
         fᶠ = copy(f)
@@ -17,7 +19,9 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
         c̄ = zeros(Int8, Ng) |> arr
         applyVOF!(InterfaceSDF,f,α,n̂)
         BCVOF!(f,α,n̂;perdir=perdir,dirdir=dirdir)
-        new{D,T,typeof(f),typeof(n̂)}(f,fᶠ,n̂,α,c̄,perdir,dirdir)
+        f⁰ = copy(f)
+        vof_smooth!(2, f, fᶠ, α;perdir=perdir)
+        new{D,T,typeof(f),typeof(n̂)}(f⁰,f,fᶠ,n̂,α,c̄,perdir,dirdir,λν,λρ)
     end
 end
 
@@ -79,18 +83,17 @@ itm: smooth steps
 f: befor smooth
 sf: after smooth
 """
-function vof_smooth!(itm, f::AbstractArray{T,d}, sf::AbstractArray{T,d}) where {T,d}
+function vof_smooth!(itm, f::AbstractArray{T,d}, sf::AbstractArray{T,d}, rf::AbstractArray{T,d};perdir=(0,)) where {T,d}
     N = size(f)
-    rf = f
+    rf .= f
     for it ∈ 1:itm
         sf .= 0.0
         for j ∈ 1:d
             @loop sf[I] += rf[I+δ(j, I)] + rf[I-δ(j, I)] + 2*rf[I] over I ∈ inside(rf)
         end
-        !per && BC!(sf)
-        per && BCVecPerNeu!(sf)
-        sf /= 12
-        rf = sf
+        BCPerNeu!(sf,perdir=perdir)
+        sf ./= 12
+        rf .= sf
     end
 end
 
@@ -270,6 +273,28 @@ function vof_flux!(d,f,α,n̂,u,u⁰,uMulp,fᶠ)
     @loop fᶠ[IFace] = vof_flux(IFace, d,f,α,n̂,0.5*(u[IFace,d]+u⁰[IFace,d])*uMulp) over IFace ∈ inside_uWB(N,d)
 end
 
+# function vof_flux(IFace::CartesianIndex, d,fIn,α,n̂,dl)
+#     v = dl;
+#     ICell = IFace;
+#     flux = 0.0
+#     if v == 0.0
+#     else
+#         if (v > 0.0) ICell -= δ(d,IFace) end
+#         f = fIn[ICell]
+#         nn = n̂[ICell,:]
+#         if (sum(abs.(nn))==0.0 || f == 0.0 || f == 1.0)
+#             flux = f*v
+#         else
+#             dl = v
+#             a = α[ICell]
+#             if (dl > 0.0) a -= nn[d]*(1.0-dl) end
+#             nn[d] *= abs(dl)
+#             flux = vof_vol(nn..., a)*v
+#         end
+#     end
+#     return flux
+# end
+
 function vof_flux(IFace::CartesianIndex, d,fIn,α,n̂,dl)
     v = dl;
     ICell = IFace;
@@ -278,30 +303,29 @@ function vof_flux(IFace::CartesianIndex, d,fIn,α,n̂,dl)
     else
         if (v > 0.0) ICell -= δ(d,IFace) end
         f = fIn[ICell]
-        if ((abs(n̂[I,1])+abs(n̂[I,2])+abs(n̂[I,3]))==0.0 || f == 0.0 || f == 1.0)
+        if ((abs(n̂[ICell,1])+abs(n̂[ICell,2])+abs(n̂[ICell,3]))==0.0 || f == 0.0 || f == 1.0)
             flux = f*v
         else
             dl = v
             a = α[ICell]
+            ndorig = n̂[ICell,d]
             if (dl > 0.0) a -= n̂[ICell,d]*(1.0-dl) end
             n̂[ICell,d] *= abs(dl)
             flux = vof_vol(n̂[ICell,1],n̂[ICell,2],n̂[ICell,3], a)*v
+            n̂[ICell,d] = ndorig
         end
     end
     return flux
 end
 
-function vof_face!(f)
-    N = size(f)
-    n = size(N)[1]
-    vof_smooth!(2, f, fsmooth)
-    for d ∈ 1:n
-    end
-end
 
+advect!(a::Flow{n}, c::cVOF, f=c.f, u¹=a.u⁰, u²=a.u) where {n} = freeint_update!(
+    a.Δt[end], f, c.fᶠ, c.n̂, c.α, u¹, u², c.c̄;perdir=a.perdir,dirdir=c.dirdir
+)
 
 function freeint_update!(δt, f, fᶠ, n̂, α, u, u⁰, c̄;perdir=(0,),dirdir=(0,))
-    tol = 1e-10
+    tol = 10eps(eltype(f))
+    # tol = 1e-6
     N,n = size_u(u)
     insideI = inside(f)
 
@@ -319,19 +343,95 @@ function freeint_update!(δt, f, fᶠ, n̂, α, u, u⁰, c̄;perdir=(0,),dirdir=
             f[I] += -∂(d,I+δ(d,I),fᶠ) + c̄[I]*(∂(d,I,u)+∂(d,I,u⁰))*0.5uMulp
         ) over I ∈ inside(f)
 
-        maxf, maxid = findmax(f[insideI])
-        minf, minid = findmin(f[insideI])
+        BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
+
+        maxf, maxid = findmax(f)
+        minf, minid = findmin(f)
         if maxf-1 > tol
-            throw(DomainError(maxf, "f$maxid ∉ [0,1]"))
+            throw(DomainError(maxf-1, "max f{$maxid} ∉ [0,1] @ iOp=$iOp which is $d"))
         end
         if minf < -tol
-            throw(DomainError(minf, "f$minid ∉ [0,1]"))
+            throw(DomainError(-minf, "min f{$minid} ∉ [0,1] @ iOp=$iOp which is $d"))
         end
         # clamp!(f,0.0,1.0)
-        f[abs.(f).<=tol] .= 0.0
-        f[abs.(f .-1).<=tol] .= 1.0
-
-        BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
+        f[f.<=tol] .= 0.0
+        f[f.>=1.0-tol] .= 1.0
     end
-    fᶠ .= f
+end
+
+function measure!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,t=0)
+    measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
+    calculateL!(a,c)
+    update!(b)
+end
+
+
+"""
+    mom_step!(a::Flow,b::AbstractPoisson,c::cVOF,sim::TwoPhaseSimulation)
+
+Integrate the `Flow` one time step using the [Boundary Data Immersion Method](https://eprints.soton.ac.uk/369635/)
+and the `AbstractPoisson` pressure solver to project the velocity onto an incompressible flow.
+"""
+@fastmath function mom_step!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody)
+    a.u⁰ .= a.u;
+
+    # predictor u → u'
+    advect!(a,c,c.f,a.u⁰,a.u);
+    measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
+    a.u .= 0
+    vof_smooth!(2, c.f⁰, c.fᶠ, c.α;perdir=c.perdir)
+    conv_diff!(a.f,a.u⁰,a.σ,ν=(d,I)->a.ν*calculateρν(d,I,c.fᶠ,c.λν), perdir=a.perdir,g=a.g)
+    BDIM!(a); 
+    BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
+    calculateL!(a,c)
+    update!(b)
+    project!(a,b); 
+    BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
+
+    # aaa = a.Δt[end]
+    # bbb = CFL(a,c)
+    # if aaa > bbb
+    #     throw(DomainError(aaa, "$aaa > $bbb"))
+    # end
+
+    # corrector u → u¹
+    advect!(a,c,c.f⁰,a.u⁰,a.u);
+    measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
+    vof_smooth!(2, c.f, c.fᶠ, c.α;perdir=c.perdir)
+    conv_diff!(a.f,a.u,a.σ,ν=(d,I)->a.ν*calculateρν(d,I,c.fᶠ,c.λν), perdir=a.perdir,g=a.g)
+    BDIM!(a); 
+    BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, f=2, perdir=a.perdir)
+    calculateL!(a,c)
+    update!(b)
+    project!(a,b,2); a.u ./= 2; 
+    BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
+    push!(a.Δt,min(CFL(a,c),1.1a.Δt[end]))
+    c.f .= c.f⁰
+    # c.f⁰ .= c.f
+end
+
+@fastmath @inline function MaxTotalflux(I::CartesianIndex{d},u) where {d}
+    s = zero(eltype(u))
+    for i in 1:d
+        s += @inbounds(max(abs(u[I,i]),abs(u[I+δ(i,I),i])))
+        # s += @inbounds(abs(u[I,i])+abs(u[I+δ(i,I),i]))
+    end
+    return s
+end
+
+function CFL(a::Flow,c::cVOF)
+    @inside a.σ[I] = flux_out(I,a.u)
+    fluxLimit = inv(maximum(a.σ)+5a.ν)
+    @inside a.σ[I] = MaxTotalflux(I,a.u)
+    cVOFLimit = 0.5*inv(maximum(a.σ))
+    min(10.,fluxLimit,cVOFLimit)
+end
+
+calculateρν(d,I,f,λ) = ϕ(d,I,f)*(1-λ) + λ
+
+function calculateL!(a::Flow{n}, c::cVOF) where {n}
+    for d ∈ 1:n
+        @loop a.μ₀[I,d] /= calculateρν(d,I,c.fᶠ,c.λρ) over I∈inside(a.p)
+    end
+    BCVecPerNeu!(a.μ₀;Dirichlet=false, A=a.U, perdir=a.perdir)
 end

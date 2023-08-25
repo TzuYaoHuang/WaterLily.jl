@@ -30,37 +30,45 @@ function median(a,b,c)
     return a
 end
 
-function conv_diff!(r,u,Φ;ν=0.1,perdir=(0,))
+function conv_diff!(r,u,Φ;ν=0.1,perdir=(0,),g=(0,0,0))
     r .= 0.
     N,n = size_u(u)
+    if typeof(ν) <: Function
+        ν_ = ν
+    else
+        ν_ = (d,I) -> ν
+    end
     for i ∈ 1:n, j ∈ 1:n
         # if it is periodic direction
         tagper = (j in perdir)
         # treatment for bottom boundary with BCs
-        !tagper && lowBoundary!(r,u,Φ,ν,i,j,N)
-        tagper && lowBoundaryPer!(r,u,Φ,ν,i,j,N)
+        !tagper && lowBoundary!(r,u,Φ,ν_,i,j,N)
+        tagper && lowBoundaryPer!(r,u,Φ,ν_,i,j,N)
         # inner cells
-        innerCell!(r,u,Φ,ν,i,j,N)
+        innerCell!(r,u,Φ,ν_,i,j,N)
         # treatment for upper boundary with BCs
-        !tagper && upperBoundary!(r,u,Φ,ν,i,j,N)
-        tagper && upperBoundaryPer!(r,u,Φ,ν,i,j,N)
+        !tagper && upperBoundary!(r,u,Φ,ν_,i,j,N)
+        tagper && upperBoundaryPer!(r,u,Φ,ν_,i,j,N)
+    end
+    for i ∈ 1:n
+        @loop r[I,i] += g[i] over I ∈ inside_uWB(N,i)
     end
 end
 
 # Neumann BC Building block
-lowBoundary!(r,u,Φ,ν,i,j,N) = @loop r[I,i] += ϕ(j,CI(I,i),u)*ϕ(i,CI(I,j),u)-ν*∂(j,CI(I,i),u) over I ∈ slice(N,2,j,2)
+lowBoundary!(r,u,Φ,ν,i,j,N) = @loop r[I,i] += ϕ(j,CI(I,i),u)*ϕ(i,CI(I,j),u)-ν(j,I)*∂(j,CI(I,i),u) over I ∈ slice(N,2,j,2)
 innerCell!(r,u,Φ,ν,i,j,N) = (
     @loop (
-        Φ[I] = ϕu(j,CI(I,i),u,ϕ(i,CI(I,j),u))-ν*∂(j,CI(I,i),u);
+        Φ[I] = ϕu(j,CI(I,i),u,ϕ(i,CI(I,j),u))-ν(j,I)*∂(j,CI(I,i),u);
         r[I,i] += Φ[I]
     ) over I ∈ inside_u(N,j);
     @loop r[I-δ(j,I),i] -= Φ[I] over I ∈ inside_u(N,j)
 )
-upperBoundary!(r,u,Φ,ν,i,j,N) = @loop r[I-δ(j,I),i] += - ϕ(j,CI(I,i),u)*ϕ(i,CI(I,j),u) + ν*∂(j,CI(I,i),u) over I ∈ slice(N,N[j],j,2)
+upperBoundary!(r,u,Φ,ν,i,j,N) = @loop r[I-δ(j,I),i] += - ϕ(j,CI(I,i),u)*ϕ(i,CI(I,j),u) + ν(j,I)*∂(j,CI(I,i),u) over I ∈ slice(N,N[j],j,2)
 
 # Periodic BC Building block
 lowBoundaryPer!(r,u,Φ,ν,i,j,N) = @loop (
-    Φ[I] = ϕuSelf(CIj(j,CI(I,i),N[j]-2),CI(I,i)-δ(j,CI(I,i)),CI(I,i),CI(I,i)+δ(j,CI(I,i)),u,ϕ(i,CI(I,j),u))-ν*∂(j,CI(I,i),u);
+    Φ[I] = ϕuSelf(CIj(j,CI(I,i),N[j]-2),CI(I,i)-δ(j,CI(I,i)),CI(I,i),CI(I,i)+δ(j,CI(I,i)),u,ϕ(i,CI(I,j),u))-ν(j,I)*∂(j,CI(I,i),u);
     r[I,i] += Φ[I]
 ) over I ∈ slice(N,2,j,2)
 upperBoundaryPer!(r,u,Φ,ν,i,j,N) = @loop r[I-δ(j,I),i] -= Φ[CIj(j,I,2)] over I ∈ slice(N,N[j],j,2)
@@ -92,7 +100,8 @@ struct Flow{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}, Tf<:AbstractArray{
     Δt:: Vector{T} # time step (stored in CPU memory)
     ν :: T # kinematic viscosity
     perdir :: NTuple # direction of periodic direction
-    function Flow(N::NTuple{D}, U::NTuple{D}; f=Array, Δt=0.25, ν=0., uλ::Function=(i, x) -> 0., T=Float64, perdir=(0,)) where D
+    g :: NTuple{D, T} # gravity field
+    function Flow(N::NTuple{D}, U::NTuple{D}; f=Array, Δt=0.25, ν=0., uλ::Function=(i, x) -> 0., T=Float64, perdir=(0,),g=(0,0,0)) where D
         Ng = N .+ 2
         Nd = (Ng..., D)
         u = Array{T}(undef, Nd...) |> f; apply!(uλ, u); 
@@ -102,7 +111,7 @@ struct Flow{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}, Tf<:AbstractArray{
         V, σᵥ = zeros(T, Nd) |> f, zeros(T, Ng) |> f
         μ₀ = ones(T, Nd) |> f  # Boundary condition will take care all the stuff, no more zero μ₀
         μ₁ = zeros(T, Ng..., D, D) |> f
-        new{D,T,typeof(p),typeof(u),typeof(μ₁)}(u,u⁰,fv,p,σ,V,σᵥ,μ₀,μ₁,U,T[Δt],ν,perdir)
+        new{D,T,typeof(p),typeof(u),typeof(μ₁)}(u,u⁰,fv,p,σ,V,σᵥ,μ₀,μ₁,U,T[Δt],ν,perdir,g)
     end
 end
 
