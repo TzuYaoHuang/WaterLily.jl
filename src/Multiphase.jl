@@ -343,8 +343,6 @@ function freeint_update!(δt, f, fᶠ, n̂, α, u, u⁰, c̄;perdir=(0,),dirdir=
             f[I] += -∂(d,I+δ(d,I),fᶠ) + c̄[I]*(∂(d,I,u)+∂(d,I,u⁰))*0.5uMulp
         ) over I ∈ inside(f)
 
-        BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
-
         maxf, maxid = findmax(f)
         minf, minid = findmin(f)
         if maxf-1 > tol
@@ -353,9 +351,9 @@ function freeint_update!(δt, f, fᶠ, n̂, α, u, u⁰, c̄;perdir=(0,),dirdir=
         if minf < -tol
             throw(DomainError(-minf, "min f{$minid} ∉ [0,1] @ iOp=$iOp which is $d"))
         end
-        # clamp!(f,0.0,1.0)
         f[f.<=tol] .= 0.0
         f[f.>=1.0-tol] .= 1.0
+        BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
     end
 end
 

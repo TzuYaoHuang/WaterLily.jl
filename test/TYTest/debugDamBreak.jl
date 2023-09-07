@@ -25,8 +25,8 @@ Return a CartesianIndex of dimension `N` which is one at index `i` and zero else
 δ(i,::Val{N}) where N = CI(ntuple(j -> j==i ? 1 : 0, N))
 δ(i,I::CartesianIndex{N}) where N = δ(i, Val{N}())
 
-computationID = "DamBreakHeun"
-N = 96
+computationID = "DamBreakHeun32"
+N = 32
 lx = ((1:N).-0.5)/N
 ly = ((1:N).-0.5)/N
 
@@ -122,22 +122,23 @@ diver,mass,maxU = sim_gif!(sim,duration=15, step=0.01,clims=(0,1),plotbody=false
 
 massrel = abs.((mass.-mass[1])/mass[1]).+1e-20
 Plots.plot(massrel,yaxis=:log10,label="mass",color=:blue)
-Plots.plot!(diver.+1e-20,yaxis=:log10,label="divergence",ylimit=[1e-10,1e0],color=:red)
+Plots.plot!(diver.+1e-20,yaxis=:log10,label="divergence" ,color=:red)
 Plots.savefig(computationID*"_MassDivergence.png")
 
 Plots.plot(maxU)
 Plots.savefig(computationID*"_MaxU.png")
 
 aa = cumsum(sim.flow.Δt)[1:end-1]*sim.U/sim.L
-Plots.plot(sim.flow.Δt,ylimit=(0,0.05))
-Plots.savefig(computationID*"_delT.png")
 
-Plots.plot(aa,sim.pois.res[1:2:end],yscale=:log10,ylimit=[1e-6,2e-3],label="First Stage")
-Plots.plot!(aa,sim.pois.res[2:2:end],yscale=:log10,ylimit=[1e-6,2e-3],label="Second Stage",legend=:bottomleft)
+Plots.plot(aa,sim.pois.res[1:2:end],yscale=:log10,label="First Stage")
+Plots.plot!(aa,sim.pois.res[2:2:end],yscale=:log10,label="Second Stage",legend=:bottomleft)
 Plots.savefig(computationID*"_PoisRes.png")
 
 Plots.plot(aa,sim.pois.n[1:2:end],label="First Stage")
 Plots.plot!(aa,sim.pois.n[2:2:end],label="Second Stage")
 Plots.savefig(computationID*"_PoisNum.png")
+
+Plots.plot(aa,sim.flow.Δt[1:end-1],ylimit=(0,0.05))
+Plots.savefig(computationID*"_delT.png")
 
 

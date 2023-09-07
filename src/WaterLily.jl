@@ -79,9 +79,9 @@ struct TwoPhaseSimulation <: AbstractSimulation
     function TwoPhaseSimulation(
                         dims::NTuple{N}, u_BC::NTuple{N}, L::Number;
                         Δt=0.25, ν=0.,λν=15.0074,λρ=0.001206, U=√sum(abs2,u_BC), ϵ=1, 
-                        perdir=(0,), dirdir=(0,), grav=(0,0,0),
+                        perdir=(0,), dirdir=(0,), grav=ntuple(i->0,N),
                         uλ::Function=(i,x)->u_BC[i], 
-                        InterfaceSDF::Function=(x) -> 5-x[1],
+                        InterfaceSDF::Function=(x) -> -5-x[1],
                         body::AbstractBody=NoBody(),T=Float32,mem=Array) where N
         flow = Flow(dims,u_BC;uλ,Δt,ν,T,f=mem,perdir=perdir,g=grav)
         inter= cVOF(dims,flow.f,flow.σ; arr=mem, InterfaceSDF=InterfaceSDF, T=T, perdir=flow.perdir, dirdir=dirdir,λν=λν,λρ=λρ)
@@ -112,6 +112,7 @@ Can be set to `false` for static geometries to speed up simulation.
 function sim_step!(sim::Simulation,t_end;verbose=false,remeasure=true)
     t = time(sim)
     while t < t_end*sim.L/sim.U
+        # sim.flow.Δt[end] = min(sim.flow.Δt[end],t_end*sim.L/sim.U-t)
         remeasure && measure!(sim,t)
         mom_step!(sim.flow,sim.pois) # evolve Flow
         t += sim.flow.Δt[end]

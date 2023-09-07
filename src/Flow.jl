@@ -101,7 +101,7 @@ struct Flow{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}, Tf<:AbstractArray{
     ν :: T # kinematic viscosity
     perdir :: NTuple # direction of periodic direction
     g :: NTuple{D, T} # gravity field
-    function Flow(N::NTuple{D}, U::NTuple{D}; f=Array, Δt=0.25, ν=0., uλ::Function=(i, x) -> 0., T=Float64, perdir=(0,),g=(0,0,0)) where D
+    function Flow(N::NTuple{D}, U::NTuple{D}; f=Array, Δt=0.25, ν=0., uλ::Function=(i, x) -> 0., T=Float64, perdir=(0,),g=ntuple(x->zero(T),D)) where D
         Ng = N .+ 2
         Nd = (Ng..., D)
         u = Array{T}(undef, Nd...) |> f; apply!(uλ, u); 
@@ -122,12 +122,14 @@ function BDIM!(a::Flow{n}) where n
 end
 
 function project!(a::Flow{n},b::AbstractPoisson,w=1) where n
-    dt = a.Δt[end]
-    @inside b.z[I] = (div(I,a.u)+w*a.σᵥ[I])/dt # divergence source term
+    dt = a.Δt[end]/w
+    b.x .*= dt
+    @inside b.z[I] = div(I,a.u)+a.σᵥ[I] # divergence source term
     solver!(b)
     for i ∈ 1:n  # apply pressure solution b.x
-        @loop a.u[I,i] -= dt*b.L[I,i]*∂(i,I,b.x) over I ∈ inside(b.x)
+        @loop a.u[I,i] -= b.L[I,i]*∂(i,I,b.x) over I ∈ inside(b.x)
     end
+    b.x ./= dt
 end
 
 """
@@ -146,9 +148,9 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
     # corrector u → u¹
     conv_diff!(a.f,a.u,a.σ,ν=a.ν, perdir=a.perdir)
-    BDIM!(a); 
-    BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, f=2, perdir=a.perdir)
-    project!(a,b,2); a.u ./= 2; 
+    BDIM!(a); a.u ./= 2;
+    BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
+    project!(a,b,2); 
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
     push!(a.Δt,CFL(a))
 end

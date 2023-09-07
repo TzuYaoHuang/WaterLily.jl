@@ -92,3 +92,15 @@ nds!(a,body,t=0) = apply!(a) do i,x
     n = ForwardDiff.gradient(y -> body.sdf(y,t), x)
     n[i]*WaterLily.kern(clamp(d,-1,1))
 end
+
+function Γ(u::AbstractArray{T}, dims:: Tuple) where {T}
+    s = zero(T)
+    N,n = size_u(u)
+    s = (
+        sum(u[2:end-1,1:2,1])+sum(u[3:end,1:2,1]) - 
+        sum(u[2:end-1,end-1:end,1])-sum(u[3:end,end-1:end,1]) -
+        sum(u[1:2,2:end-1,2])-sum(u[1:2,3:end,2]) +
+        sum(u[end-1:end,2:end-1,2])+sum(u[end-1:end,3:end,2]) 
+    )/4
+    return s
+end
