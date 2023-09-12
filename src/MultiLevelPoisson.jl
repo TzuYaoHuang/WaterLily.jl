@@ -92,7 +92,7 @@ function solver!(ml::MultiLevelPoisson;log=false,tol=1e-3,itmx=32)
     push!(ml.res0,r₂)
     log && (res = [r₂])
     nᵖ=0
-    while r₂>tol && nᵖ<itmx
+    while (r₂>tol || nᵖ==0) && nᵖ<itmx
         Vcycle!(ml)
         smooth!(p); r₂ = L₂(p)
         log && push!(res,r₂)

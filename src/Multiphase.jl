@@ -38,8 +38,8 @@ function applyVOF!(FreeSurfsdf,f,α,n̂)
             f[I] = ifelse(α[I]>0,0,1)
         else
             n̂[I,:] = ForwardDiff.gradient(FreeSurfsdf,(loc(0,I)+loc(I))*0.5);
-            n̂[I,:] /= (n̂[I,1]^2+n̂[I,2]^2+n̂[I,3]^2)^0.5;
-            f[I] = vof_vol(n̂[I,1],n̂[I,2],n̂[I,3],-α[I]);
+            n̂[I,:] /= sqrt(sum(n̂[I,:].^2));
+            f[I] = vof_vol(n̂[I,:]...,-α[I]);
         end
     ) over I ∈ inside(f)
 end
@@ -105,7 +105,7 @@ Get volume fraction from intersection.
 """
 function f3(m1, m2, m3, a)
     m12 = m1 + m2
-    tol = 1e-10
+    tol = 10eps(typeof(m1))
 
     if a < m1
         f3 = a^3/(6.0*m1*m2*m3)
@@ -157,12 +157,16 @@ Get intercept with volume fraction.
 """
 function a3(m1, m2, m3, v)
     m12 = m1 + m2
-    tol = 1e-10
+    tol = 10eps(typeof(m1))
 
     p = 6.0*m1*m2*m3
     v1 = m1^2/(6.0*m2*m3 + tol)
     v2 = v1 + (m2 - m1)/(2.0*m3)
-    v3 = ifelse(m3 < m12, (m3^2*(3.0*m12 - m3) + m1^2*(m1 - 3.0*m3) + m2^2*(m2 - 3.0*m3))/p,m12*0.5/m3)
+    v3 = ifelse(
+        m3 < m12, 
+        (m3^2*(3.0*m12 - m3) + m1^2*(m1 - 3.0*m3) + m2^2*(m2 - 3.0*m3))/p,
+        m12*0.5/m3
+    )
 
     if v < v1
         a3 = (p*v)^(1.0/3.0)
@@ -187,6 +191,7 @@ function a3(m1, m2, m3, v)
     return a3
 end
 
+vof_int(n1, n2, g) = vof_int(n1, n2, 0, g)
 function vof_int(n1, n2, n3, g)
     t = abs(n1) + abs(n2) + abs(n3)
     if g != 0.5
@@ -199,6 +204,7 @@ function vof_int(n1, n2, n3, g)
     vof_int = ifelse(g < 0.5, a, 1.0 - a)*t + min(n1, 0.0) + min(n2, 0.0) + min(n3, 0.0)
 end
 
+vof_vol(n1, n2, b) = vof_vol(n1, n2, 0, b)
 function vof_vol(n1, n2, n3, b)
     t = abs(n1) + abs(n2) + abs(n3)
     a = (b - min(n1, 0.0) - min(n2, 0.0) - min(n3, 0.0))/t
@@ -262,7 +268,7 @@ function vof_reconstruct!(I,f,α,n̂,N,n)
                 end
             end
         end
-        alpha = vof_int(nhat[1],nhat[2],nhat[3], fc)
+        alpha = vof_int(nhat..., fc)
     end
     return alpha,nhat
 end
@@ -273,27 +279,6 @@ function vof_flux!(d,f,α,n̂,u,u⁰,uMulp,fᶠ)
     @loop fᶠ[IFace] = vof_flux(IFace, d,f,α,n̂,0.5*(u[IFace,d]+u⁰[IFace,d])*uMulp) over IFace ∈ inside_uWB(N,d)
 end
 
-# function vof_flux(IFace::CartesianIndex, d,fIn,α,n̂,dl)
-#     v = dl;
-#     ICell = IFace;
-#     flux = 0.0
-#     if v == 0.0
-#     else
-#         if (v > 0.0) ICell -= δ(d,IFace) end
-#         f = fIn[ICell]
-#         nn = n̂[ICell,:]
-#         if (sum(abs.(nn))==0.0 || f == 0.0 || f == 1.0)
-#             flux = f*v
-#         else
-#             dl = v
-#             a = α[ICell]
-#             if (dl > 0.0) a -= nn[d]*(1.0-dl) end
-#             nn[d] *= abs(dl)
-#             flux = vof_vol(nn..., a)*v
-#         end
-#     end
-#     return flux
-# end
 
 function vof_flux(IFace::CartesianIndex, d,fIn,α,n̂,dl)
     v = dl;
@@ -303,16 +288,15 @@ function vof_flux(IFace::CartesianIndex, d,fIn,α,n̂,dl)
     else
         if (v > 0.0) ICell -= δ(d,IFace) end
         f = fIn[ICell]
-        if ((abs(n̂[ICell,1])+abs(n̂[ICell,2])+abs(n̂[ICell,3]))==0.0 || f == 0.0 || f == 1.0)
+        nhat = n̂[ICell,:]
+        if (sum(abs.(nhat))==0.0 || f == 0.0 || f == 1.0)
             flux = f*v
         else
             dl = v
             a = α[ICell]
-            ndorig = n̂[ICell,d]
-            if (dl > 0.0) a -= n̂[ICell,d]*(1.0-dl) end
-            n̂[ICell,d] *= abs(dl)
-            flux = vof_vol(n̂[ICell,1],n̂[ICell,2],n̂[ICell,3], a)*v
-            n̂[ICell,d] = ndorig
+            if (dl > 0.0) a -= nhat[d]*(1.0-dl) end
+            nhat[d] *= abs(dl)
+            flux = vof_vol(nhat..., a)*v
         end
     end
     return flux
@@ -325,15 +309,19 @@ advect!(a::Flow{n}, c::cVOF, f=c.f, u¹=a.u⁰, u²=a.u) where {n} = freeint_upd
 
 function freeint_update!(δt, f, fᶠ, n̂, α, u, u⁰, c̄;perdir=(0,),dirdir=(0,))
     tol = 10eps(eltype(f))
-    # tol = 1e-6
     N,n = size_u(u)
     insideI = inside(f)
 
     # Gil Strang splitting: see https://www.asc.tuwien.ac.at/~winfried/splitting/
-    opOrder = [3,2,1,2,3]
-    opCoeff = [0.5,0.5,1.0,0.5,0.5]
+    if n ==2
+        opOrder = [2,1,2]
+        opCoeff = [0.5,1.0,0.5]
+    elseif n==3
+        opOrder = [3,2,1,2,3]
+        opCoeff = [0.5,0.5,1.0,0.5,0.5]
+    end
 
-    c̄ .= ifelse.(f .<= 0.5, 0, 1)  # inside the operator or not????
+    c̄ .= ifelse.(f .<= 0.5, 0, 1)
     for iOp ∈ CartesianIndices(opOrder)
         d = opOrder[iOp]
         uMulp = opCoeff[iOp]*δt
@@ -386,22 +374,16 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     project!(a,b); 
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
 
-    # aaa = a.Δt[end]
-    # bbb = CFL(a,c)
-    # if aaa > bbb
-    #     throw(DomainError(aaa, "$aaa > $bbb"))
-    # end
-
     # corrector u → u¹
     advect!(a,c,c.f⁰,a.u⁰,a.u);
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
     vof_smooth!(2, c.f, c.fᶠ, c.α;perdir=c.perdir)
     conv_diff!(a.f,a.u,a.σ,ν=(d,I)->a.ν*calculateρν(d,I,c.fᶠ,c.λν), perdir=a.perdir,g=a.g)
-    BDIM!(a); 
+    BDIM!(a); a.u ./= 2;
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, f=2, perdir=a.perdir)
     calculateL!(a,c)
     update!(b)
-    project!(a,b,2); a.u ./= 2; 
+    project!(a,b,2);  
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
     push!(a.Δt,min(CFL(a,c),1.1a.Δt[end]))
     c.f .= c.f⁰
@@ -412,7 +394,6 @@ end
     s = zero(eltype(u))
     for i in 1:d
         s += @inbounds(max(abs(u[I,i]),abs(u[I+δ(i,I),i])))
-        # s += @inbounds(abs(u[I,i])+abs(u[I+δ(i,I),i]))
     end
     return s
 end
