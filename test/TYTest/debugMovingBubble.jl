@@ -31,8 +31,9 @@ Return a CartesianIndex of dimension `N` which is one at index `i` and zero else
 δ(i,::Val{N}) where N = CI(ntuple(j -> j==i ? 1 : 0, N))
 δ(i,I::CartesianIndex{N}) where N = δ(i, Val{N}())
 
-N = 32
-computationID = "DamBreakHeun"*string(N)
+N = 128
+grav=1
+computationID = "BubbleMove"*string(N)
 
 lx = ((1:N).-0.5)/N
 ly = ((1:N).-0.5)/N
@@ -72,26 +73,9 @@ function sim_gif!(sim;duration=1,step=0.1,verbose=true,R=inside(sim.flow.p),
         sim.flow.σ[I] = WaterLily.div(I,sim.flow.u)
     end
 
-    xMidList = (1:N).-0.5
-
-    function getFrontLocation(f)
-        locTemp = xMidList[1]
-        for i∈1:N-1
-            cur = f[i+1,2]-0.5
-            nex = 0.5-f[i+2,2]
-            locTemp = xMidList[i+1]
-            if cur*nex >= 0
-                locTemp = (nex*xMidList[i]+cur*xMidList[i+1])/(nex+cur)
-                break
-            end
-        end
-        return locTemp
-    end
-
     diver = [Statistics.sum(abs.(sim.flow.σ[R]))]
     mass = [Statistics.mean(sim.inter.f[R])]
-    maxU = [maximum(sqrt.(Statistics.sum(sim.flow.u.^2,dims=4)))]
-    loc = [getFrontLocation(sim.inter.f)]
+    maxU = [maximum(sqrt.(Statistics.sum(sim.flow.u.^2,dims=3)))]
     trueTime = [WaterLily.time(sim)]
     @time anim = @animate for tᵢ in range(t₀,t₀+duration;step)
     # @time for tᵢ in range(t₀,t₀+duration;step)
@@ -99,6 +83,7 @@ function sim_gif!(sim;duration=1,step=0.1,verbose=true,R=inside(sim.flow.p),
             WaterLily.sim_step!(sim,tᵢ;remeasure)
         catch y
             println(y)
+            println("EERROORR")
             return diver,mass,maxU
         end
         for I∈inside(sim.flow.σ)
@@ -106,52 +91,45 @@ function sim_gif!(sim;duration=1,step=0.1,verbose=true,R=inside(sim.flow.p),
         end
         push!(diver,maximum(abs.(sim.inter.f[R].*sim.flow.σ[R])))
         push!(mass,Statistics.mean(sim.inter.f[R]))
-        push!(maxU,maximum(sqrt.(Statistics.sum(sim.flow.u.^2,dims=4))))
-        push!(loc,getFrontLocation(sim.inter.f))
+        push!(maxU,maximum(sqrt.(Statistics.sum(sim.flow.u.^2,dims=3))))
         push!(trueTime,WaterLily.time(sim))
-        Plots.contourf(lx,ly,clamp.(sim.flow.p[2:end-1,2:end-1]'/sim.U^2*2,0,1), aspect_ratio=:equal,color=:dense,levels=60,xlimit=[0,1],ylimit=[0,1],linewidth=0,clim=(0,1))
+        Plots.plot()
+        Plots.contourf(lx,ly,clamp.(sim.flow.p[2:end-1,2:end-1]'/(grav*sim.L),-1,1), aspect_ratio=:equal,color=:seismic,levels=60,xlimit=[0,1],ylimit=[0,1],linewidth=0,clim=(-1,1))
         Plots.contour!(lx,ly,sim.inter.f[2:end-1,2:end-1]', aspect_ratio=:equal,color=:Black,levels=[0.5],xlimit=[0,1],ylimit=[0,1],linewidth=2)
         plotbody && body_plot!(sim)
         verbose && println("tU/L=",round(tᵢ,digits=4),
             ", Δt=",sim.flow.Δt[end])
     end
-    gif(anim, computationID*"_hydroDyn.gif", fps = 30)
-    return diver,mass,maxU,loc,trueTime
+    gif(anim, computationID*"_Velocity.gif", fps = 30)
+    return diver,mass,maxU,trueTime
 end
 
-function damBreak(NN;Re=493.954,g=9.81)
+function MovingBubble(NN;Re=500,g=9.81)
     LDomain = (NN,NN)
-    H = NN/4
-    LScale = H
-    UScale = sqrt(2g*LScale)
+    R = NN/4
+    LScale = R
+    UScale = sqrt(g*LScale)
     ν = UScale*LScale/Re
 
     function interSDF(xx)
-        y,z = @. xx-1.5
-        if y<=H && z <= 2H
-            return max(y-H,z-2H)
-        elseif y<=H && z > 2H
-            return z-2H
-        elseif y>H && z <= 2H
-            return y-H
-        elseif y>H && z > 2H
-            return sqrt((z-2H)^2+(y-H)^2)
-        end
+        x,y = @. xx-1.5
+        return ((x-NN/2)^2+(y-NN/2)^2)^0.5 - R
     end
 
-    return WaterLily.TwoPhaseSimulation(LDomain, (0,0), LScale;U=UScale, Δt=0.01,grav=(0,-g), ν=ν, InterfaceSDF=interSDF, T=Float64,λν=1e-3,λρ=1e-3)
+    return WaterLily.TwoPhaseSimulation(LDomain, (0,0), LScale;U=UScale, Δt=0.01,grav=(0,-g), ν=ν, InterfaceSDF=interSDF, T=Float64,λν=1,λρ=1e-3,perdir=(1,),uλ=(i,x) -> ifelse(i==1,UScale,0))
 end
 
 
-sim = damBreak(N)
+sim = MovingBubble(N, Re=1000, g=grav)
 
-diver,mass,maxU,loc,trueTime = sim_gif!(sim,duration=10, step=0.01,clims=(0,1),plotbody=false,verbose=true,levels=0.0:0.05:1.0,remeasure=false,cfill=:RdBu,linewidth=2,xlimit=[0,32],ylimit=[0,32],shift=(-0.5,-0.5));
+# for ii∈1:10
+# WaterLily.mom_step!(sim.flow, sim.pois, sim.inter, sim.body)
+# end
+
+diver,mass,maxU,trueTime = sim_gif!(sim,duration=8, step=0.01,clims=(0,1),plotbody=false,verbose=true,levels=0.0:0.05:1.0,remeasure=false,cfill=:RdBu,linewidth=2,xlimit=[0,32],ylimit=[0,32],shift=(-0.5,-0.5));
 
 trueTime *= sim.U/sim.L
 maxU /= sim.U
-loc /= sim.L
-
-MartinData = CSV.File("DamBreakFront_SunTao.csv") |> Tables.matrix
 
 massrel = abs.((mass.-mass[1])/mass[1]).+1e-20
 Plots.plot(trueTime,diver.+1e-20,yaxis=:log10,label="Velocity Divergence" ,color=:red)
@@ -162,16 +140,15 @@ Plots.savefig(computationID*"_MassDivergence.png")
 Plots.plot(trueTime,maxU)
 Plots.savefig(computationID*"_MaxU.png")
 
-Plots.plot(trueTime,loc,color=:black,linewidth=1.25,label="Simulation")
-Plots.scatter!(MartinData[:,1],MartinData[:,2],color=:black,label="Sun and Tao (2010)")
-Plots.plot!(xlimit=[0,3],ylimit=[1,4],aspect_ratio=:equal)
-Plots.savefig(computationID*"_FrontLocation.png")
-
 aa = cumsum(sim.flow.Δt)[1:end-1]*sim.U/sim.L
 
 Plots.plot(aa,sim.pois.res0[1:2:end],yscale=:log10,label="First Stage")
 Plots.plot!(aa,sim.pois.res0[2:2:end],yscale=:log10,label="Second Stage",legend=:bottomleft)
 Plots.savefig(computationID*"_PoisRes.png")
+
+Plots.plot(aa,sim.pois.res[1:2:end],yscale=:log10,label="First Stage")
+Plots.plot!(aa,sim.pois.res[2:2:end],yscale=:log10,label="Second Stage",legend=:bottomleft)
+Plots.savefig(computationID*"_PoisResFinal.png")
 
 Plots.plot(aa,sim.pois.n[1:2:end],label="First Stage")
 Plots.plot!(aa,sim.pois.n[2:2:end],label="Second Stage")

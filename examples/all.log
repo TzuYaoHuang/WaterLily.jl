@@ -1,0 +1,1364 @@
+ERROR: LoadError: InvalidIRError: compiling MethodInstance for (::WaterLily.var"#gpu_##kern#292#14"{var"#uλ#4"{Int64, Int64}})(::KernelAbstractions.CompilerMetadata{KernelAbstractions.NDIteration.DynamicSize, KernelAbstractions.NDIteration.DynamicCheck, Nothing, CartesianIndices{3, Tuple{Base.OneTo{Int64}, Base.OneTo{Int64}, Base.OneTo{Int64}}}, KernelAbstractions.NDIteration.NDRange{3, KernelAbstractions.NDIteration.DynamicSize, KernelAbstractions.NDIteration.StaticSize{(64, 1, 1)}, CartesianIndices{3, Tuple{Base.OneTo{Int64}, Base.OneTo{Int64}, Base.OneTo{Int64}}}, Nothing}}, ::oneDeviceArray{Float32, 4, 1}, ::Int64, ::CartesianIndex{3}) resulted in invalid LLVM IR
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] -
+    @ ./float.jl:409
+  [2] makeargs1
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:221
+  [3] prepare_args
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:226
+  [4] makeargs1
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:221
+  [5] prepare_args
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:226
+  [6] newf
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:185
+  [7] macro expansion
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:140
+  [8] __broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:128
+  [9] _broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:124
+ [10] copy
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:62
+ [11] materialize
+    @ ./broadcast.jl:873
+ [12] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:7
+ [13] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [14] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [15] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] -
+    @ ./float.jl:409
+  [2] makeargs1
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:221
+  [3] prepare_args
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:226
+  [4] makeargs1
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:221
+  [5] prepare_args
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:226
+  [6] newf
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:185
+  [7] macro expansion
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:140
+  [8] __broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:128
+  [9] _broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:124
+ [10] copy
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:62
+ [11] materialize
+    @ ./broadcast.jl:873
+ [12] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:7
+ [13] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [14] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [15] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] *
+    @ ./float.jl:410
+  [2] *
+    @ ./promotion.jl:411
+  [3] makeargs1
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:221
+  [4] prepare_args
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:226
+  [5] newf
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:185
+  [6] macro expansion
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:140
+  [7] __broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:128
+  [8] _broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:124
+  [9] copy
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:62
+ [10] materialize
+    @ ./broadcast.jl:873
+ [11] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:7
+ [12] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [13] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [14] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] Float64
+    @ ./float.jl:159
+  [2] convert
+    @ ./number.jl:7
+  [3] _promote
+    @ ./promotion.jl:358
+  [4] promote
+    @ ./promotion.jl:381
+  [5] /
+    @ ./promotion.jl:413
+  [6] newf
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:185
+  [7] macro expansion
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:140
+  [8] __broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:128
+  [9] _broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:124
+ [10] copy
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:62
+ [11] materialize
+    @ ./broadcast.jl:873
+ [12] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:7
+ [13] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [14] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [15] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] /
+    @ ./float.jl:411
+  [2] /
+    @ ./promotion.jl:413
+  [3] newf
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:185
+  [4] macro expansion
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:140
+  [5] __broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:128
+  [6] _broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:124
+  [7] copy
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:62
+  [8] materialize
+    @ ./broadcast.jl:873
+  [9] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:7
+ [10] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [11] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [12] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] -
+    @ ./float.jl:409
+  [2] makeargs1
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:221
+  [3] prepare_args
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:226
+  [4] makeargs1
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:221
+  [5] prepare_args
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:226
+  [6] newf
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:185
+  [7] macro expansion
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:140
+  [8] __broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:128
+  [9] _broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:124
+ [10] copy
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:62
+ [11] materialize
+    @ ./broadcast.jl:873
+ [12] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:7
+ [13] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [14] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [15] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] -
+    @ ./float.jl:409
+  [2] makeargs1
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:221
+  [3] prepare_args
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:226
+  [4] makeargs1
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:221
+  [5] prepare_args
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:226
+  [6] newf
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:185
+  [7] macro expansion
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:140
+  [8] __broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:128
+  [9] _broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:124
+ [10] copy
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:62
+ [11] materialize
+    @ ./broadcast.jl:873
+ [12] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:7
+ [13] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [14] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [15] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] *
+    @ ./float.jl:410
+  [2] *
+    @ ./promotion.jl:411
+  [3] makeargs1
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:221
+  [4] prepare_args
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:226
+  [5] newf
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:185
+  [6] macro expansion
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:140
+  [7] __broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:128
+  [8] _broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:124
+  [9] copy
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:62
+ [10] materialize
+    @ ./broadcast.jl:873
+ [11] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:7
+ [12] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [13] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [14] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] /
+    @ ./float.jl:411
+  [2] /
+    @ ./promotion.jl:413
+  [3] newf
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:185
+  [4] macro expansion
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:140
+  [5] __broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:128
+  [6] _broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:124
+  [7] copy
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:62
+  [8] materialize
+    @ ./broadcast.jl:873
+  [9] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:7
+ [10] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [11] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [12] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] -
+    @ ./float.jl:409
+  [2] makeargs1
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:221
+  [3] prepare_args
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:226
+  [4] makeargs1
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:221
+  [5] prepare_args
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:226
+  [6] newf
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:185
+  [7] macro expansion
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:140
+  [8] __broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:128
+  [9] _broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:124
+ [10] copy
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:62
+ [11] materialize
+    @ ./broadcast.jl:873
+ [12] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:7
+ [13] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [14] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [15] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] -
+    @ ./float.jl:409
+  [2] makeargs1
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:221
+  [3] prepare_args
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:226
+  [4] makeargs1
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:221
+  [5] prepare_args
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:226
+  [6] newf
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:185
+  [7] macro expansion
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:140
+  [8] __broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:128
+  [9] _broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:124
+ [10] copy
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:62
+ [11] materialize
+    @ ./broadcast.jl:873
+ [12] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:7
+ [13] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [14] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [15] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] *
+    @ ./float.jl:410
+  [2] *
+    @ ./promotion.jl:411
+  [3] makeargs1
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:221
+  [4] prepare_args
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:226
+  [5] newf
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:185
+  [6] macro expansion
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:140
+  [7] __broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:128
+  [8] _broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:124
+  [9] copy
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:62
+ [10] materialize
+    @ ./broadcast.jl:873
+ [11] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:7
+ [12] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [13] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [14] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] /
+    @ ./float.jl:411
+  [2] /
+    @ ./promotion.jl:413
+  [3] newf
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:185
+  [4] macro expansion
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:140
+  [5] __broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:128
+  [6] _broadcast
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:124
+  [7] copy
+    @ ~/.julia/packages/StaticArrays/dTwvg/src/broadcast.jl:62
+  [8] materialize
+    @ ./broadcast.jl:873
+  [9] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:7
+ [10] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [11] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [12] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/base.jl:40
+  [2] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:149
+  [3] _typed_llvmcall
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:149
+  [4] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:300
+  [5] macro expansion
+    @ ~/.julia/packages/oneAPI/Ogykr/src/device/utils.jl:77
+  [6] #sin
+    @ ~/.julia/packages/oneAPI/Ogykr/src/device/opencl/math.jl:92
+  [7] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [8] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [9] _getindex (repeats 2 times)
+    @ ./broadcast.jl:679
+ [10] _broadcast_getindex
+    @ ./broadcast.jl:655
+ [11] getindex
+    @ ./broadcast.jl:610
+ [12] copy
+    @ ./broadcast.jl:888
+ [13] materialize
+    @ ./broadcast.jl:873
+ [14] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:8
+ [15] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [16] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [17] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/base.jl:40
+  [2] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:149
+  [3] _typed_llvmcall
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:149
+  [4] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:300
+  [5] macro expansion
+    @ ~/.julia/packages/oneAPI/Ogykr/src/device/utils.jl:77
+  [6] #cos
+    @ ~/.julia/packages/oneAPI/Ogykr/src/device/opencl/math.jl:34
+  [7] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [8] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [9] _getindex (repeats 3 times)
+    @ ./broadcast.jl:679
+ [10] _broadcast_getindex
+    @ ./broadcast.jl:655
+ [11] getindex
+    @ ./broadcast.jl:610
+ [12] copy
+    @ ./broadcast.jl:888
+ [13] materialize
+    @ ./broadcast.jl:873
+ [14] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:8
+ [15] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [16] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [17] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/base.jl:40
+  [2] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:149
+  [3] _typed_llvmcall
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:149
+  [4] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:300
+  [5] macro expansion
+    @ ~/.julia/packages/oneAPI/Ogykr/src/device/utils.jl:77
+  [6] #cos
+    @ ~/.julia/packages/oneAPI/Ogykr/src/device/opencl/math.jl:34
+  [7] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [8] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [9] _getindex
+    @ ./broadcast.jl:680
+ [10] _getindex (repeats 3 times)
+    @ ./broadcast.jl:679
+ [11] _broadcast_getindex
+    @ ./broadcast.jl:655
+ [12] getindex
+    @ ./broadcast.jl:610
+ [13] copy
+    @ ./broadcast.jl:888
+ [14] materialize
+    @ ./broadcast.jl:873
+ [15] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:8
+ [16] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [17] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [18] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] Float64
+    @ ./float.jl:159
+  [2] convert
+    @ ./number.jl:7
+  [3] _promote
+    @ ./promotion.jl:358
+  [4] promote
+    @ ./promotion.jl:381
+  [5] *
+    @ ./promotion.jl:411
+  [6] *
+    @ ./operators.jl:578
+  [7] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [8] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [9] getindex
+    @ ./broadcast.jl:610
+ [10] copy
+    @ ./broadcast.jl:888
+ [11] materialize
+    @ ./broadcast.jl:873
+ [12] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:8
+ [13] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [14] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [15] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] *
+    @ ./float.jl:410
+  [2] *
+    @ ./promotion.jl:411
+  [3] *
+    @ ./operators.jl:578
+  [4] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [5] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [6] getindex
+    @ ./broadcast.jl:610
+  [7] copy
+    @ ./broadcast.jl:888
+  [8] materialize
+    @ ./broadcast.jl:873
+  [9] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:8
+ [10] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [11] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [12] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] *
+    @ ./float.jl:410
+  [2] *
+    @ ./operators.jl:578
+  [3] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [4] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [5] getindex
+    @ ./broadcast.jl:610
+  [6] copy
+    @ ./broadcast.jl:888
+  [7] materialize
+    @ ./broadcast.jl:873
+  [8] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:8
+  [9] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [10] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [11] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] *
+    @ ./float.jl:410
+  [2] afoldl
+    @ ./operators.jl:535
+  [3] *
+    @ ./operators.jl:578
+  [4] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [5] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [6] getindex
+    @ ./broadcast.jl:610
+  [7] copy
+    @ ./broadcast.jl:888
+  [8] materialize
+    @ ./broadcast.jl:873
+  [9] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:8
+ [10] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [11] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [12] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+ [1] macro expansion
+   @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [2] gpu_
+   @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [3] gpu_
+   @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+ [1] uλ
+   @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:0
+ [2] macro expansion
+   @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [3] gpu_
+   @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [4] gpu_
+   @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/base.jl:40
+  [2] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:149
+  [3] _typed_llvmcall
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:149
+  [4] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:300
+  [5] macro expansion
+    @ ~/.julia/packages/oneAPI/Ogykr/src/device/utils.jl:77
+  [6] #cos
+    @ ~/.julia/packages/oneAPI/Ogykr/src/device/opencl/math.jl:34
+  [7] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [8] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [9] _getindex (repeats 2 times)
+    @ ./broadcast.jl:679
+ [10] _broadcast_getindex
+    @ ./broadcast.jl:655
+ [11] getindex
+    @ ./broadcast.jl:610
+ [12] copy
+    @ ./broadcast.jl:888
+ [13] materialize
+    @ ./broadcast.jl:873
+ [14] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:9
+ [15] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [16] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [17] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/base.jl:40
+  [2] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:149
+  [3] _typed_llvmcall
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:149
+  [4] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:300
+  [5] macro expansion
+    @ ~/.julia/packages/oneAPI/Ogykr/src/device/utils.jl:77
+  [6] #sin
+    @ ~/.julia/packages/oneAPI/Ogykr/src/device/opencl/math.jl:92
+  [7] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [8] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [9] _getindex (repeats 3 times)
+    @ ./broadcast.jl:679
+ [10] _broadcast_getindex
+    @ ./broadcast.jl:655
+ [11] getindex
+    @ ./broadcast.jl:610
+ [12] copy
+    @ ./broadcast.jl:888
+ [13] materialize
+    @ ./broadcast.jl:873
+ [14] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:9
+ [15] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [16] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [17] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/base.jl:40
+  [2] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:149
+  [3] _typed_llvmcall
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:149
+  [4] macro expansion
+    @ ~/.julia/packages/LLVM/5aiiG/src/interop/pointer.jl:300
+  [5] macro expansion
+    @ ~/.julia/packages/oneAPI/Ogykr/src/device/utils.jl:77
+  [6] #cos
+    @ ~/.julia/packages/oneAPI/Ogykr/src/device/opencl/math.jl:34
+  [7] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [8] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [9] _getindex
+    @ ./broadcast.jl:680
+ [10] _getindex (repeats 3 times)
+    @ ./broadcast.jl:679
+ [11] _broadcast_getindex
+    @ ./broadcast.jl:655
+ [12] getindex
+    @ ./broadcast.jl:610
+ [13] copy
+    @ ./broadcast.jl:888
+ [14] materialize
+    @ ./broadcast.jl:873
+ [15] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:9
+ [16] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [17] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [18] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] Float64
+    @ ./float.jl:159
+  [2] convert
+    @ ./number.jl:7
+  [3] _promote
+    @ ./promotion.jl:358
+  [4] promote
+    @ ./promotion.jl:381
+  [5] *
+    @ ./promotion.jl:411
+  [6] *
+    @ ./operators.jl:578
+  [7] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [8] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [9] getindex
+    @ ./broadcast.jl:610
+ [10] copy
+    @ ./broadcast.jl:888
+ [11] materialize
+    @ ./broadcast.jl:873
+ [12] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:9
+ [13] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [14] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [15] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] *
+    @ ./float.jl:410
+  [2] *
+    @ ./promotion.jl:411
+  [3] *
+    @ ./operators.jl:578
+  [4] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [5] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [6] getindex
+    @ ./broadcast.jl:610
+  [7] copy
+    @ ./broadcast.jl:888
+  [8] materialize
+    @ ./broadcast.jl:873
+  [9] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:9
+ [10] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [11] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [12] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] *
+    @ ./float.jl:410
+  [2] *
+    @ ./operators.jl:578
+  [3] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [4] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [5] getindex
+    @ ./broadcast.jl:610
+  [6] copy
+    @ ./broadcast.jl:888
+  [7] materialize
+    @ ./broadcast.jl:873
+  [8] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:9
+  [9] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [10] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [11] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] *
+    @ ./float.jl:410
+  [2] afoldl
+    @ ./operators.jl:535
+  [3] *
+    @ ./operators.jl:578
+  [4] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [5] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [6] getindex
+    @ ./broadcast.jl:610
+  [7] copy
+    @ ./broadcast.jl:888
+  [8] materialize
+    @ ./broadcast.jl:873
+  [9] uλ
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:9
+ [10] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [11] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [12] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] Float64
+    @ ./float.jl:159
+  [2] convert
+    @ ./number.jl:7
+  [3] _promote
+    @ ./promotion.jl:358
+  [4] promote
+    @ ./promotion.jl:381
+  [5] *
+    @ ./promotion.jl:411
+  [6] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [7] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [8] _getindex
+    @ ./broadcast.jl:680
+  [9] _getindex
+    @ ./broadcast.jl:679
+ [10] _broadcast_getindex
+    @ ./broadcast.jl:655
+ [11] #31
+    @ ./broadcast.jl:1088
+ [12] ntuple
+    @ ./ntuple.jl:50
+ [13] copy
+    @ ./broadcast.jl:1088
+ [14] materialize
+    @ ./broadcast.jl:873
+ [15] loc (repeats 2 times)
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:120
+ [16] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [17] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [18] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] *
+    @ ./float.jl:410
+  [2] *
+    @ ./promotion.jl:411
+  [3] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [4] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [5] _getindex
+    @ ./broadcast.jl:680
+  [6] _getindex
+    @ ./broadcast.jl:679
+  [7] _broadcast_getindex
+    @ ./broadcast.jl:655
+  [8] #31
+    @ ./broadcast.jl:1088
+  [9] ntuple
+    @ ./ntuple.jl:50
+ [10] copy
+    @ ./broadcast.jl:1088
+ [11] materialize
+    @ ./broadcast.jl:873
+ [12] loc (repeats 2 times)
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:120
+ [13] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [14] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [15] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] Float64
+    @ ./float.jl:159
+  [2] convert
+    @ ./number.jl:7
+  [3] _promote
+    @ ./promotion.jl:358
+  [4] promote
+    @ ./promotion.jl:381
+  [5] -
+    @ ./promotion.jl:412
+  [6] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [7] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [8] #31
+    @ ./broadcast.jl:1088
+  [9] ntuple
+    @ ./ntuple.jl:50
+ [10] copy
+    @ ./broadcast.jl:1088
+ [11] materialize
+    @ ./broadcast.jl:873
+ [12] loc (repeats 2 times)
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:120
+ [13] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [14] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [15] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] -
+    @ ./float.jl:409
+  [2] -
+    @ ./promotion.jl:412
+  [3] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [4] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [5] #31
+    @ ./broadcast.jl:1088
+  [6] ntuple
+    @ ./ntuple.jl:50
+  [7] copy
+    @ ./broadcast.jl:1088
+  [8] materialize
+    @ ./broadcast.jl:873
+  [9] loc (repeats 2 times)
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:120
+ [10] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [11] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [12] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] Float64
+    @ ./float.jl:159
+  [2] convert
+    @ ./number.jl:7
+  [3] _promote
+    @ ./promotion.jl:358
+  [4] promote
+    @ ./promotion.jl:381
+  [5] *
+    @ ./promotion.jl:411
+  [6] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [7] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [8] _getindex
+    @ ./broadcast.jl:680
+  [9] _getindex
+    @ ./broadcast.jl:679
+ [10] _broadcast_getindex
+    @ ./broadcast.jl:655
+ [11] #31
+    @ ./broadcast.jl:1088
+ [12] ntuple
+    @ ./ntuple.jl:50
+ [13] copy
+    @ ./broadcast.jl:1088
+ [14] materialize
+    @ ./broadcast.jl:873
+ [15] loc (repeats 2 times)
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:120
+ [16] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [17] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [18] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] *
+    @ ./float.jl:410
+  [2] *
+    @ ./promotion.jl:411
+  [3] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [4] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [5] _getindex
+    @ ./broadcast.jl:680
+  [6] _getindex
+    @ ./broadcast.jl:679
+  [7] _broadcast_getindex
+    @ ./broadcast.jl:655
+  [8] #31
+    @ ./broadcast.jl:1088
+  [9] ntuple
+    @ ./ntuple.jl:50
+ [10] copy
+    @ ./broadcast.jl:1088
+ [11] materialize
+    @ ./broadcast.jl:873
+ [12] loc (repeats 2 times)
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:120
+ [13] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [14] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [15] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] Float64
+    @ ./float.jl:159
+  [2] convert
+    @ ./number.jl:7
+  [3] _promote
+    @ ./promotion.jl:358
+  [4] promote
+    @ ./promotion.jl:381
+  [5] -
+    @ ./promotion.jl:412
+  [6] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [7] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [8] #31
+    @ ./broadcast.jl:1088
+  [9] ntuple
+    @ ./ntuple.jl:50
+ [10] copy
+    @ ./broadcast.jl:1088
+ [11] materialize
+    @ ./broadcast.jl:873
+ [12] loc (repeats 2 times)
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:120
+ [13] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [14] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [15] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] -
+    @ ./float.jl:409
+  [2] -
+    @ ./promotion.jl:412
+  [3] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [4] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [5] #31
+    @ ./broadcast.jl:1088
+  [6] ntuple
+    @ ./ntuple.jl:50
+  [7] copy
+    @ ./broadcast.jl:1088
+  [8] materialize
+    @ ./broadcast.jl:873
+  [9] loc (repeats 2 times)
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:120
+ [10] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [11] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [12] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] Float64
+    @ ./float.jl:159
+  [2] convert
+    @ ./number.jl:7
+  [3] _promote
+    @ ./promotion.jl:358
+  [4] promote
+    @ ./promotion.jl:381
+  [5] *
+    @ ./promotion.jl:411
+  [6] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [7] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [8] _getindex
+    @ ./broadcast.jl:680
+  [9] _getindex
+    @ ./broadcast.jl:679
+ [10] _broadcast_getindex
+    @ ./broadcast.jl:655
+ [11] #31
+    @ ./broadcast.jl:1088
+ [12] ntuple
+    @ ./ntuple.jl:50
+ [13] copy
+    @ ./broadcast.jl:1088
+ [14] materialize
+    @ ./broadcast.jl:873
+ [15] loc (repeats 2 times)
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:120
+ [16] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [17] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [18] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] *
+    @ ./float.jl:410
+  [2] *
+    @ ./promotion.jl:411
+  [3] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [4] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [5] _getindex
+    @ ./broadcast.jl:680
+  [6] _getindex
+    @ ./broadcast.jl:679
+  [7] _broadcast_getindex
+    @ ./broadcast.jl:655
+  [8] #31
+    @ ./broadcast.jl:1088
+  [9] ntuple
+    @ ./ntuple.jl:50
+ [10] copy
+    @ ./broadcast.jl:1088
+ [11] materialize
+    @ ./broadcast.jl:873
+ [12] loc (repeats 2 times)
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:120
+ [13] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [14] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [15] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] Float64
+    @ ./float.jl:159
+  [2] convert
+    @ ./number.jl:7
+  [3] _promote
+    @ ./promotion.jl:358
+  [4] promote
+    @ ./promotion.jl:381
+  [5] -
+    @ ./promotion.jl:412
+  [6] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [7] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [8] #31
+    @ ./broadcast.jl:1088
+  [9] ntuple
+    @ ./ntuple.jl:50
+ [10] copy
+    @ ./broadcast.jl:1088
+ [11] materialize
+    @ ./broadcast.jl:873
+ [12] loc (repeats 2 times)
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:120
+ [13] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [14] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [15] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+  [1] -
+    @ ./float.jl:409
+  [2] -
+    @ ./promotion.jl:412
+  [3] _broadcast_getindex_evalf
+    @ ./broadcast.jl:683
+  [4] _broadcast_getindex
+    @ ./broadcast.jl:656
+  [5] #31
+    @ ./broadcast.jl:1088
+  [6] ntuple
+    @ ./ntuple.jl:50
+  [7] copy
+    @ ./broadcast.jl:1088
+  [8] materialize
+    @ ./broadcast.jl:873
+  [9] loc (repeats 2 times)
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:120
+ [10] macro expansion
+    @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [11] gpu_
+    @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [12] gpu_
+    @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+ [1] ntuple
+   @ ./ntuple.jl:50
+ [2] copy
+   @ ./broadcast.jl:1088
+ [3] materialize
+   @ ./broadcast.jl:873
+ [4] loc (repeats 2 times)
+   @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:120
+ [5] macro expansion
+   @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [6] gpu_
+   @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [7] gpu_
+   @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+ [1] ntuple
+   @ ./ntuple.jl:50
+ [2] copy
+   @ ./broadcast.jl:1088
+ [3] materialize
+   @ ./broadcast.jl:873
+ [4] loc (repeats 2 times)
+   @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:120
+ [5] macro expansion
+   @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [6] gpu_
+   @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [7] gpu_
+   @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+ [1] ntuple
+   @ ./ntuple.jl:50
+ [2] copy
+   @ ./broadcast.jl:1088
+ [3] materialize
+   @ ./broadcast.jl:873
+ [4] loc (repeats 2 times)
+   @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:120
+ [5] macro expansion
+   @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [6] gpu_
+   @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [7] gpu_
+   @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+ [1] macro expansion
+   @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [2] gpu_
+   @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [3] gpu_
+   @ ./none:0
+Reason: unsupported unsupported use of double value
+Stacktrace:
+ [1] Float32
+   @ ./float.jl:258
+ [2] convert
+   @ ./number.jl:7
+ [3] setindex!
+   @ ~/.julia/packages/oneAPI/Ogykr/src/device/array.jl:169
+ [4] setindex!
+   @ ~/.julia/packages/oneAPI/Ogykr/src/device/array.jl:182
+ [5] macro expansion
+   @ ~/.julia/packages/WaterLily/aHsHt/src/util.jl:97
+ [6] gpu_
+   @ ~/.julia/packages/KernelAbstractions/cWlFz/src/macros.jl:90
+ [7] gpu_
+   @ ./none:0
+Hint: catch this exception as `err` and call `code_typed(err; interactive = true)` to introspect the erronous code with Cthulhu.jl
+Stacktrace:
+  [1] check_ir(job::GPUCompiler.CompilerJob{GPUCompiler.SPIRVCompilerTarget, oneAPI.oneAPICompilerParams}, args::LLVM.Module)
+    @ GPUCompiler ~/.julia/packages/GPUCompiler/cy24l/src/validation.jl:154
+  [2] macro expansion
+    @ ~/.julia/packages/GPUCompiler/cy24l/src/driver.jl:407 [inlined]
+  [3] macro expansion
+    @ ~/.julia/packages/TimerOutputs/RsWnF/src/TimerOutput.jl:253 [inlined]
+  [4] macro expansion
+    @ ~/.julia/packages/GPUCompiler/cy24l/src/driver.jl:406 [inlined]
+  [5] emit_llvm(job::GPUCompiler.CompilerJob; libraries::Bool, deferred_codegen::Bool, optimize::Bool, cleanup::Bool, only_entry::Bool, validate::Bool, ctx::LLVM.ThreadSafeContext)
+    @ GPUCompiler ~/.julia/packages/GPUCompiler/cy24l/src/utils.jl:89
+  [6] emit_llvm
+    @ ~/.julia/packages/GPUCompiler/cy24l/src/utils.jl:83 [inlined]
+  [7] codegen(output::Symbol, job::GPUCompiler.CompilerJob; libraries::Bool, deferred_codegen::Bool, optimize::Bool, cleanup::Bool, strip::Bool, validate::Bool, only_entry::Bool, parent_job::Nothing, ctx::LLVM.ThreadSafeContext)
+    @ GPUCompiler ~/.julia/packages/GPUCompiler/cy24l/src/driver.jl:120
+  [8] codegen
+    @ ~/.julia/packages/GPUCompiler/cy24l/src/driver.jl:94 [inlined]
+  [9] compile(target::Symbol, job::GPUCompiler.CompilerJob; libraries::Bool, deferred_codegen::Bool, optimize::Bool, cleanup::Bool, strip::Bool, validate::Bool, only_entry::Bool, ctx::LLVM.ThreadSafeContext)
+    @ GPUCompiler ~/.julia/packages/GPUCompiler/cy24l/src/driver.jl:90
+ [10] compile
+    @ ~/.julia/packages/GPUCompiler/cy24l/src/driver.jl:81 [inlined]
+ [11] compile(job::GPUCompiler.CompilerJob, ctx::LLVM.ThreadSafeContext)
+    @ oneAPI ~/.julia/packages/oneAPI/Ogykr/src/compiler/compilation.jl:83
+ [12] #47
+    @ ~/.julia/packages/oneAPI/Ogykr/src/compiler/compilation.jl:79 [inlined]
+ [13] LLVM.ThreadSafeContext(f::oneAPI.var"#47#48"{GPUCompiler.CompilerJob{GPUCompiler.SPIRVCompilerTarget, oneAPI.oneAPICompilerParams}})
+    @ LLVM ~/.julia/packages/LLVM/5aiiG/src/executionengine/ts_module.jl:14
+ [14] JuliaContext
+    @ ~/.julia/packages/GPUCompiler/cy24l/src/driver.jl:35 [inlined]
+ [15] compile
+    @ ~/.julia/packages/oneAPI/Ogykr/src/compiler/compilation.jl:78 [inlined]
+ [16] actual_compilation(cache::Dict{UInt64, Any}, key::UInt64, cfg::GPUCompiler.CompilerConfig{GPUCompiler.SPIRVCompilerTarget, oneAPI.oneAPICompilerParams}, ft::Type, tt::Type, compiler::typeof(oneAPI.compile), linker::typeof(oneAPI.link))
+    @ GPUCompiler ~/.julia/packages/GPUCompiler/cy24l/src/cache.jl:53
+ [17] cached_compilation(cache::Dict{UInt64, Any}, cfg::GPUCompiler.CompilerConfig{GPUCompiler.SPIRVCompilerTarget, oneAPI.oneAPICompilerParams}, ft::Type, tt::Type, compiler::Function, linker::Function)
+    @ GPUCompiler ~/.julia/packages/GPUCompiler/cy24l/src/cache.jl:37
+ [18] macro expansion
+    @ ~/.julia/packages/oneAPI/Ogykr/src/compiler/execution.jl:158 [inlined]
+ [19] macro expansion
+    @ ./lock.jl:267 [inlined]
+ [20] zefunction(f::WaterLily.var"#gpu_##kern#292#14"{var"#uλ#4"{Int64, Int64}}, tt::Type{Tuple{KernelAbstractions.CompilerMetadata{KernelAbstractions.NDIteration.DynamicSize, KernelAbstractions.NDIteration.DynamicCheck, Nothing, CartesianIndices{3, Tuple{Base.OneTo{Int64}, Base.OneTo{Int64}, Base.OneTo{Int64}}}, KernelAbstractions.NDIteration.NDRange{3, KernelAbstractions.NDIteration.DynamicSize, KernelAbstractions.NDIteration.StaticSize{(64, 1, 1)}, CartesianIndices{3, Tuple{Base.OneTo{Int64}, Base.OneTo{Int64}, Base.OneTo{Int64}}}, Nothing}}, oneDeviceArray{Float32, 4, 1}, Int64, CartesianIndex{3}}}; kwargs::Base.Pairs{Symbol, Union{}, Tuple{}, NamedTuple{(), Tuple{}}})
+    @ oneAPI ~/.julia/packages/oneAPI/Ogykr/src/compiler/execution.jl:154
+ [21] zefunction(f::WaterLily.var"#gpu_##kern#292#14"{var"#uλ#4"{Int64, Int64}}, tt::Type{Tuple{KernelAbstractions.CompilerMetadata{KernelAbstractions.NDIteration.DynamicSize, KernelAbstractions.NDIteration.DynamicCheck, Nothing, CartesianIndices{3, Tuple{Base.OneTo{Int64}, Base.OneTo{Int64}, Base.OneTo{Int64}}}, KernelAbstractions.NDIteration.NDRange{3, KernelAbstractions.NDIteration.DynamicSize, KernelAbstractions.NDIteration.StaticSize{(64, 1, 1)}, CartesianIndices{3, Tuple{Base.OneTo{Int64}, Base.OneTo{Int64}, Base.OneTo{Int64}}}, Nothing}}, oneDeviceArray{Float32, 4, 1}, Int64, CartesianIndex{3}}})
+    @ oneAPI ~/.julia/packages/oneAPI/Ogykr/src/compiler/execution.jl:151
+ [22] macro expansion
+    @ ~/.julia/packages/oneAPI/Ogykr/src/compiler/execution.jl:58 [inlined]
+ [23] (::KernelAbstractions.Kernel{oneAPIBackend, KernelAbstractions.NDIteration.StaticSize{(64,)}, KernelAbstractions.NDIteration.DynamicSize, WaterLily.var"#gpu_##kern#292#14"{var"#uλ#4"{Int64, Int64}}})(::oneArray{Float32, 4, oneAPI.oneL0.DeviceBuffer}, ::Vararg{Any}; ndrange::Tuple{Int64, Int64, Int64}, workgroupsize::Nothing)
+    @ oneAPI.oneAPIKernels ~/.julia/packages/oneAPI/Ogykr/src/oneAPIKernels.jl:83
+ [24] apply!(f::var"#uλ#4"{Int64, Int64}, c::oneArray{Float32, 4, oneAPI.oneL0.DeviceBuffer})
+    @ WaterLily ~/.julia/packages/WaterLily/aHsHt/src/util.jl:99
+ [25] Flow(N::Tuple{Int64, Int64, Int64}, U::Tuple{Int64, Int64, Int64}; f::Type, Δt::Float64, ν::Float64, uλ::Function, T::Type)
+    @ WaterLily ~/.julia/packages/WaterLily/aHsHt/src/Flow.jl:73
+ [26] Simulation(dims::Tuple{Int64, Int64, Int64}, u_BC::Tuple{Int64, Int64, Int64}, L::Int64; Δt::Float64, ν::Float64, U::Int64, ϵ::Int64, uλ::Function, body::WaterLily.NoBody, T::Type, mem::Type)
+    @ WaterLily ~/.julia/packages/WaterLily/aHsHt/src/WaterLily.jl:60
+ [27] Simulation
+    @ ~/.julia/packages/WaterLily/aHsHt/src/WaterLily.jl:56 [inlined]
+ [28] #TGV#3
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:13 [inlined]
+ [29] top-level scope
+    @ ~/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:21
+in expression starting at /home/tyhuang/Documents/Github/WaterLily.jl/examples/ThreeD_TaylorGreenVortex.jl:21

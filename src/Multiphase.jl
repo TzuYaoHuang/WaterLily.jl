@@ -17,7 +17,7 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
         fᶠ = copy(f)
         n̂ = n̂place; α = αplace
         c̄ = zeros(Int8, Ng) |> arr
-        applyVOF!(InterfaceSDF,f,α,n̂)
+        applyVOF!(f,α,n̂,InterfaceSDF)
         BCVOF!(f,α,n̂;perdir=perdir,dirdir=dirdir)
         f⁰ = copy(f)
         vof_smooth!(2, f, fᶠ, α;perdir=perdir)
@@ -26,11 +26,11 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
 end
 
 """
-    applyVOF!(FreeSurfsdf,f,α,n̂)
+    applyVOF!(f,α,n̂,FreeSurfsdf)
 
 Given a distance function (FreeSurfsdf) for the initial free-surface, yield the volume fraction (f), intercept (α), normal (n̂)
 """
-function applyVOF!(FreeSurfsdf,f,α,n̂)
+function applyVOF!(f,α,n̂,FreeSurfsdf)
     N,n = size_u(n̂)
     @loop (
         α[I] = FreeSurfsdf(loc(I));
@@ -230,11 +230,11 @@ end
 
 function vof_reconstruct!(f,α,n̂;perdir=(0,),dirdir=(0,))
     N,n = size_u(n̂)
-    @loop α[I],n̂[I,:] = vof_reconstruct!(I,f,α,n̂,N,n) over I ∈ inside(f)
+    @loop α[I],n̂[I,:] = vof_reconstruct!(I,f,α,n̂,N,n,perdir=perdir,dirdir=dirdir) over I ∈ inside(f)
     BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
 end
 
-function vof_reconstruct!(I,f,α,n̂,N,n)
+function vof_reconstruct!(I,f,α,n̂,N,n;perdir=(0,),dirdir=(0,))
     fc = f[I]
     nhat = n̂[I,:]
     alpha = α[I]
@@ -253,10 +253,12 @@ function vof_reconstruct!(I,f,α,n̂,N,n)
                 hc = vof_height(I       , f, dc)
                 hd = vof_height(I-δ(d,I), f, dc)
                 nhat[d] = -(hu-hd)*0.5
-                if I[d] == N[d]-1
-                    nhat[d] = -(hc - hd)
-                elseif I[d] == 2
-                    nhat[d] = -(hu - hc)
+                if d ∉ dirdir && d ∉ perdir
+                    if I[d] == N[d]-1
+                        nhat[d] = -(hc - hd)
+                    elseif I[d] == 2
+                        nhat[d] = -(hu - hc)
+                    end
                 elseif (hu+hd==0.0 || hu+hd==6.0)
                     nhat .= 0.0
                 elseif abs(nhat[d]) > 0.5
@@ -352,6 +354,72 @@ function measure!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,t=0)
 end
 
 
+function conv_diff!(r,u,Φ;ν=0.1,ρ=1,perdir=(0,),g=(0,0,0))
+    r .= 0.
+    N,n = size_u(u)
+    for i ∈ 1:n, j ∈ 1:n
+        # if it is periodic direction
+        tagper = (j in perdir)
+        # treatment for bottom boundary with BCs
+        !tagper && lowBoundaryDiff!(r,u,Φ,ν,i,j,N)
+        tagper && lowBoundaryPerDiff!(r,u,Φ,ν,i,j,N)
+        # inner cells
+        innerCellDiff!(r,u,Φ,ν,i,j,N)
+        # treatment for upper boundary with BCs
+        !tagper && upperBoundaryDiff!(r,u,Φ,ν,i,j,N)
+        tagper && upperBoundaryPer!(r,u,Φ,ν,i,j,N)
+    end
+    for i ∈ 1:n
+        @loop r[I,i] = r[I,i]/ρ(i,I) + g[i] over I ∈ inside_uWB(N,i)
+    end
+    for i ∈ 1:n, j ∈ 1:n
+        # if it is periodic direction
+        tagper = (j in perdir)
+        # treatment for bottom boundary with BCs
+        !tagper && lowBoundaryConv!(r,u,Φ,ν,i,j,N)
+        tagper && lowBoundaryPerConv!(r,u,Φ,ν,i,j,N)
+        # inner cells
+        innerCellConv!(r,u,Φ,ν,i,j,N)
+        # treatment for upper boundary with BCs
+        !tagper && upperBoundaryConv!(r,u,Φ,ν,i,j,N)
+        tagper && upperBoundaryPer!(r,u,Φ,ν,i,j,N)
+    end
+end
+
+innerCellConv!(r,u,Φ,ν,i,j,N) = (
+    @loop (
+        Φ[I] = ϕu(j,CI(I,i),u,ϕ(i,CI(I,j),u));
+        r[I,i] += Φ[I]
+    ) over I ∈ inside_u(N,j);
+    @loop r[I-δ(j,I),i] -= Φ[I] over I ∈ inside_u(N,j)
+)
+innerCellDiff!(r,u,Φ,ν,i,j,N) = (
+    @loop (
+        Φ[I] = -ν(i,j,I)*(∂(j,CI(I,i),u)+∂(i,CI(I,j),u));
+        r[I,i] += Φ[I]
+    ) over I ∈ inside_u(N,j);
+    @loop r[I-δ(j,I),i] -= Φ[I] over I ∈ inside_u(N,j)
+)
+
+# Neumann BC Building block
+lowBoundaryConv!(r,u,Φ,ν,i,j,N) = @loop r[I,i] += ϕ(j,CI(I,i),u)*ϕ(i,CI(I,j),u) over I ∈ slice(N,2,j,2)
+lowBoundaryDiff!(r,u,Φ,ν,i,j,N) = @loop r[I,i] += -ν(i,j,I)*(∂(j,CI(I,i),u)+∂(i,CI(I,j),u)) over I ∈ slice(N,2,j,2)
+
+upperBoundaryConv!(r,u,Φ,ν,i,j,N) = @loop r[I-δ(j,I),i] += - ϕ(j,CI(I,i),u)*ϕ(i,CI(I,j),u) over I ∈ slice(N,N[j],j,2)
+upperBoundaryDiff!(r,u,Φ,ν,i,j,N) = @loop r[I-δ(j,I),i] += ν(i,j,I)*(∂(j,CI(I,i),u)+∂(i,CI(I,j),u)) over I ∈ slice(N,N[j],j,2)
+
+# Periodic BC Building block
+lowBoundaryPerConv!(r,u,Φ,ν,i,j,N) = @loop (
+    Φ[I] = ϕuSelf(CIj(j,CI(I,i),N[j]-2),CI(I,i)-δ(j,CI(I,i)),CI(I,i),CI(I,i)+δ(j,CI(I,i)),u,ϕ(i,CI(I,j),u));
+    r[I,i] += Φ[I]
+) over I ∈ slice(N,2,j,2)
+lowBoundaryPerDiff!(r,u,Φ,ν,i,j,N) = @loop (
+    Φ[I] = -ν(i,j,I)*(∂(j,CI(I,i),u)+∂(i,CI(I,j),u));
+    r[I,i] += Φ[I]
+) over I ∈ slice(N,2,j,2)
+upperBoundaryPer!(r,u,Φ,ν,i,j,N) = @loop r[I-δ(j,I),i] -= Φ[CIj(j,I,2)] over I ∈ slice(N,N[j],j,2)
+
+
 """
     mom_step!(a::Flow,b::AbstractPoisson,c::cVOF,sim::TwoPhaseSimulation)
 
@@ -366,7 +434,7 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
     a.u .= 0
     vof_smooth!(2, c.f⁰, c.fᶠ, c.α;perdir=c.perdir)
-    conv_diff!(a.f,a.u⁰,a.σ,ν=(d,I)->a.ν*calculateρν(d,I,c.fᶠ,c.λν), perdir=a.perdir,g=a.g)
+    conv_diff!(a.f,a.u⁰,a.σ,ν=(i,j,I)->a.ν*calculateμ(i,j,I,c.fᶠ,c.λν),ρ=(i,I)->calculateρν(i,I,c.fᶠ,c.λρ), perdir=a.perdir,g=a.g)
     BDIM!(a); 
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
     calculateL!(a,c)
@@ -378,7 +446,7 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     advect!(a,c,c.f⁰,a.u⁰,a.u);
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
     vof_smooth!(2, c.f, c.fᶠ, c.α;perdir=c.perdir)
-    conv_diff!(a.f,a.u,a.σ,ν=(d,I)->a.ν*calculateρν(d,I,c.fᶠ,c.λν), perdir=a.perdir,g=a.g)
+    conv_diff!(a.f,a.u,a.σ,ν=(i,j,I)->a.ν*calculateμ(i,j,I,c.fᶠ,c.λν),ρ=(i,I)->calculateρν(i,I,c.fᶠ,c.λρ), perdir=a.perdir,g=a.g)
     BDIM!(a); a.u ./= 2;
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, f=2, perdir=a.perdir)
     calculateL!(a,c)
@@ -400,13 +468,25 @@ end
 
 function CFL(a::Flow,c::cVOF)
     @inside a.σ[I] = flux_out(I,a.u)
-    fluxLimit = inv(maximum(a.σ)+5a.ν)
+    fluxLimit = inv(maximum(a.σ)+5*a.ν*max(1,c.λν/c.λρ))
     @inside a.σ[I] = MaxTotalflux(I,a.u)
     cVOFLimit = 0.5*inv(maximum(a.σ))
     min(10.,fluxLimit,cVOFLimit)
 end
 
 calculateρν(d,I,f,λ) = ϕ(d,I,f)*(1-λ) + λ
+
+function calculateμ(i,j,I,f,λ)
+    (i==j) && return f[I-δ(i,I)]*(1-λ) + λ
+    n = length(I)
+    s = zero(eltype(f))
+    iteratorBase = [[0,1] for ii ∈ 1:n]
+    for II in Iterators.product(iteratorBase...)
+        s += f[I-CartesianIndex(II)]
+    end
+    s /= 2^n
+    return s * (1-λ) + λ
+end
 
 function calculateL!(a::Flow{n}, c::cVOF) where {n}
     for d ∈ 1:n

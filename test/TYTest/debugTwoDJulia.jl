@@ -1,8 +1,15 @@
-include("../../src/WaterLily.jl")
+filePath = @__FILE__
+workdir = dirname(filePath)
+waterlilypath = dirname(dirname(workdir))*"/src/WaterLily.jl"
+
+include(waterlilypath)
 WaterLily = Main.WaterLily;
 using Plots; gr()
 using StaticArrays
 using JLD
+using BenchmarkTools
+
+ENV["GKSwstype"]="nul"
 
 computationID = "2DTGV"
 
@@ -46,20 +53,21 @@ function sim_gif!(sim;duration=1,step=0.1,verbose=true,R=inside(sim.flow.p),
             sim.flow.σ[I] = WaterLily.curl(3,I,sim.flow.u)*sim.L/sim.U
         end
         WaterLily.BCPer!(sim.flow.σ)
-        # flood(sim.flow.σ[2:end-1,2:end-1,4]; kv...)
-        flood(sim.flow.p[2:end-1,2:end-1,4]/sim.U^2; kv...)
+        flood(sim.flow.σ[2:end-1,2:end-1]; kv...)
+        # flood(sim.flow.p[2:end-1,2:end-1]/sim.U^2; kv...)
         # flood(sim.inter.f[2:end-1,2:end-1,4]; kv...)
         plotbody && body_plot!(sim)
         verbose && println("tU/L=",round(tᵢ,digits=4),
             ", Δt=",sim.flow.Δt[end])
+	flush(stdout)
     end
     gif(anim, computationID*"_VOFPlot.gif", fps = 30)
     return omegaInter
 end
 
-function TGV(; pow=6, Re=1e5, T=Float32, mem=Array)
+function TGV(; L=64, Re=1e5, T=Float64, mem=Array)
     # Define vortex size, velocity, viscosity
-    L = 2^pow; U = 1; ν = U*L/Re
+    L = L; U = 1; ν = U*L/Re
     # Taylor-Green-Vortex initial velocity field
     function uλ(i,xyz)
         x,y = @. (xyz-1.5)*2π/L                # scaled coordinates
@@ -70,14 +78,14 @@ function TGV(; pow=6, Re=1e5, T=Float32, mem=Array)
     InterfaceSDF=(x) -> (x[1]-1.5+x[2]-1.5)-L
     InterfaceSDF=(x) -> (x[1]-1.5)-L/2
     # Initialize simulation
-    return WaterLily.Simulation((L, L,8), (0, 0,0), L; U=U, uλ=uλ, ν=ν, T=T, mem=mem,perdir=(0,))
-    # return WaterLily.TwoPhaseSimulation((L, L,8), (0,0,0), L;U=U, uλ=uλ, Δt=0.01, ν=ν, T=T, mem=mem,perdir=(0,),λν=1.0,λρ=0.0012, InterfaceSDF=InterfaceSDF)
+    return WaterLily.Simulation((L, L), (0, 0), L; U=U, Δt=0.01, uλ=uλ, ν=ν, T=T, mem=mem,perdir=(1,2))
+    # return WaterLily.TwoPhaseSimulation((L, L), (0,0), L;U=U, uλ=uλ, Δt=0.01, ν=ν, T=T, mem=mem,perdir=(0,),λν=1.0,λρ=1.0, InterfaceSDF=InterfaceSDF)
 end
 
-sim = TGV(;Re=10000)
+sim = TGV(;Re=10000,L=64)
 # sim = TGVHalfPer(;Re=10000)
 
-omegaInter = sim_gif!(sim,duration=20, step=0.01,clims=(-3,3),plotbody=false,verbose=true,levels=41);
+omegaInter = sim_gif!(sim,duration=10, step=0.01,clims=(-10,10),plotbody=false,verbose=true,levels=41);
 
 
 aa = cumsum(sim.flow.Δt)[1:end-1]*sim.U/sim.L

@@ -109,6 +109,7 @@ function pcg!(p::Poisson;it=6)
     @inside z[I] = ϵ[I] = r[I]*p.iD[I]
     insideI = inside(x) # [insideI]
     rho = r ⋅ z
+    abs(rho)<1e-12 && return
     for i in 1:it
         BCPerNeu!(ϵ,perdir=p.perdir)
         @inside z[I] = mult(I,p.L,p.D,ϵ)

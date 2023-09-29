@@ -8,7 +8,8 @@
 Manifest.toml
 /docs/build/
 .vscode/
-*.jld
+*.jld*
 .DS_Store
 *.txt
 lotus_oop-master/*
+.log
