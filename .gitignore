@@ -12,4 +12,7 @@ Manifest.toml
 .DS_Store
 *.txt
 lotus_oop-master/*
-.log
+*.log
+slurm*
+*.sh*
+*#
