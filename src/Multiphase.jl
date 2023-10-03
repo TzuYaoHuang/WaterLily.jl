@@ -32,16 +32,17 @@ Given a distance function (FreeSurfsdf) for the initial free-surface, yield the 
 """
 function applyVOF!(f,α,n̂,FreeSurfsdf)
     N,n = size_u(n̂)
-    @loop (
-        α[I] = FreeSurfsdf(loc(I));
-        if abs2(α[I])>n 
-            f[I] = ifelse(α[I]>0,0,1)
-        else
-            n̂[I,:] = ForwardDiff.gradient(FreeSurfsdf,(loc(0,I)+loc(I))*0.5);
-            n̂[I,:] /= sqrt(sum(n̂[I,:].^2));
-            f[I] = vof_vol(n̂[I,:]...,-α[I]);
-        end
-    ) over I ∈ inside(f)
+    @loop applyVOF!(f,α,n̂,FreeSurfsdf,n,I) over I ∈ inside(f)
+end
+function applyVOF!(f,α,n̂,FreeSurfsdf,n,I)
+    α[I] = FreeSurfsdf(loc(I));
+    if abs2(α[I])>n 
+        f[I] = ifelse(α[I]>0,0,1)
+    else
+        nhat = ForwardDiff.gradient(FreeSurfsdf,(loc(0,I)+loc(I))*0.5);
+        nhat /= sqrt(sum(nhat.^2));
+        f[I] = vof_vol(nhat,-α[I]);
+    end
 end
 
 
@@ -67,8 +68,8 @@ function BCVOF!(f,α,n̂;perdir=(0,),dirdir=(0,))
                 @loop n̂[I,i] = mulp*n̂[I+δ(j,I),i] over I ∈ slice(N,1,j)
                 @loop n̂[I,i] = mulp*n̂[I-δ(j,I),i] over I ∈ slice(N,N[j],j)
             end
-            @loop α[I] = vof_int(n̂[I,1],n̂[I,2],n̂[I,3],f[I]) over I ∈ slice(N,1,j)
-            @loop α[I] = vof_int(n̂[I,1],n̂[I,2],n̂[I,3],f[I]) over I ∈ slice(N,N[j],j)
+            @loop α[I] = vof_int((@view n̂[I,:]),f[I]) over I ∈ slice(N,1,j)
+            @loop α[I] = vof_int((@view n̂[I,:]),f[I]) over I ∈ slice(N,N[j],j)
         end
     end
 end
@@ -191,7 +192,11 @@ function a3(m1, m2, m3, v)
     return a3
 end
 
-vof_int(n1, n2, g) = vof_int(n1, n2, 0, g)
+vof_int(v::AbstractArray{T,1}, g) where T = (
+    length(v)==2 ?
+    vof_int(v[1], v[2], zero(T), g) :
+    vof_int(v[1], v[2], v[3], g)
+)
 function vof_int(n1, n2, n3, g)
     t = abs(n1) + abs(n2) + abs(n3)
     if g != 0.5
@@ -200,11 +205,14 @@ function vof_int(n1, n2, n3, g)
     else
         a = 0.5
     end
-
-    vof_int = ifelse(g < 0.5, a, 1.0 - a)*t + min(n1, 0.0) + min(n2, 0.0) + min(n3, 0.0)
+    return ifelse(g < 0.5, a, 1.0 - a)*t + min(n1, 0.0) + min(n2, 0.0) + min(n3, 0.0)
 end
 
-vof_vol(n1, n2, b) = vof_vol(n1, n2, 0, b)
+vof_vol(v::AbstractArray{T,1}, b) where T = (
+    length(v)==2 ?
+    vof_vol(v[1], v[2], zero(T), b) :
+    vof_vol(v[1], v[2], v[3], b)
+)
 function vof_vol(n1, n2, n3, b)
     t = abs(n1) + abs(n2) + abs(n3)
     a = (b - min(n1, 0.0) - min(n2, 0.0) - min(n3, 0.0))/t
@@ -230,21 +238,19 @@ end
 
 function vof_reconstruct!(f,α,n̂;perdir=(0,),dirdir=(0,))
     N,n = size_u(n̂)
-    @loop α[I],n̂[I,:] = vof_reconstruct!(I,f,α,n̂,N,n,perdir=perdir,dirdir=dirdir) over I ∈ inside(f)
+    @loop vof_reconstruct!(f,α,n̂,N,I,perdir=perdir,dirdir=dirdir) over I ∈ inside(f)
     BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
 end
-
-function vof_reconstruct!(I,f,α,n̂,N,n;perdir=(0,),dirdir=(0,))
+function vof_reconstruct!(f::AbstractArray{T,n},α::AbstractArray{T,n},n̂::AbstractArray{T,nv},N,I;perdir=(0,),dirdir=(0,)) where {T,n,nv}
     fc = f[I]
-    nhat = n̂[I,:]
-    alpha = α[I]
+    nhat = @view n̂[I,:] #nzeros(T,n)
     if (fc==0.0 || fc==1.0)
-        alpha = fc
+        f[I] = fc
     else
         for d ∈ 1:n
             nhat[d] = (f[I-δ(d,I)]-f[I+δ(d,I)])*0.5
         end
-        dc = argmax(abs.(nhat))
+        dc = myargmax(n,nhat)
         for d ∈ 1:n
             if (d == dc)
                 nhat[d] = copysign(1.0,nhat[d])
@@ -270,38 +276,50 @@ function vof_reconstruct!(I,f,α,n̂,N,n;perdir=(0,),dirdir=(0,))
                 end
             end
         end
-        alpha = vof_int(nhat..., fc)
+        α[I] = vof_int(nhat, fc)
+        for i∈1:n n̂[I,i] = nhat[i] end
     end
-    return alpha,nhat
+end
+
+function myargmax(n,vec)
+    max = abs2(vec[1])
+    iMax = 1
+    for i∈2:n
+        cur = abs2(vec[i])
+        if cur > max
+            max = cur
+            iMax = i
+        end
+    end
+    return iMax
 end
 
 function vof_flux!(d,f,α,n̂,u,u⁰,uMulp,fᶠ)
     N,n = size_u(n̂)
     fᶠ .= 0.0
-    @loop fᶠ[IFace] = vof_flux(IFace, d,f,α,n̂,0.5*(u[IFace,d]+u⁰[IFace,d])*uMulp) over IFace ∈ inside_uWB(N,d)
+    @loop vof_flux!(fᶠ,d,f,α,n̂,0.5*(u[IFace,d]+u⁰[IFace,d])*uMulp,IFace) over IFace ∈ inside_uWB(N,d)
 end
-
-
-function vof_flux(IFace::CartesianIndex, d,fIn,α,n̂,dl)
-    v = dl;
+function vof_flux!(fᶠ::AbstractArray{T,n},d,fIn::AbstractArray{T,n},α::AbstractArray{T,n},n̂::AbstractArray{T,nv},dl,IFace::CartesianIndex) where {T,n,nv}
     ICell = IFace;
     flux = 0.0
-    if v == 0.0
+    if dl == 0.0
     else
-        if (v > 0.0) ICell -= δ(d,IFace) end
+        if (dl > 0.0) ICell -= δ(d,IFace) end
         f = fIn[ICell]
-        nhat = n̂[ICell,:]
-        if (sum(abs.(nhat))==0.0 || f == 0.0 || f == 1.0)
-            flux = f*v
+        nhat = @view n̂[ICell,:]
+        if (sum(abs,nhat)==0.0 || f == 0.0 || f == 1.0)
+            flux = f*dl
         else
-            dl = v
+            dl = dl
             a = α[ICell]
             if (dl > 0.0) a -= nhat[d]*(1.0-dl) end
+            nhatOrig = nhat[d]
             nhat[d] *= abs(dl)
-            flux = vof_vol(nhat..., a)*v
+            flux = vof_vol(nhat, a)*dl
+            nhat[d] = nhatOrig
         end
     end
-    return flux
+    fᶠ[IFace] = flux
 end
 
 
@@ -354,7 +372,8 @@ function measure!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,t=0)
 end
 
 
-function conv_diff!(r,u,Φ;ν=0.1,ρ=1,perdir=(0,),g=(0,0,0))
+function conv_diff!(r,u,Φ;ν=(i,j,I) -> 0.1,ρ=(i,I)->1,perdir=(0,),g=(0,0,0))
+# function conv_diff!(r,u,Φ,ν,ρ,perdir,g)
     r .= 0.
     N,n = size_u(u)
     for i ∈ 1:n, j ∈ 1:n
@@ -434,7 +453,10 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
     a.u .= 0
     vof_smooth!(2, c.f⁰, c.fᶠ, c.α;perdir=c.perdir)
-    conv_diff!(a.f,a.u⁰,a.σ,ν=(i,j,I)->a.ν*calculateμ(i,j,I,c.fᶠ,c.λν),ρ=(i,I)->calculateρν(i,I,c.fᶠ,c.λρ), perdir=a.perdir,g=a.g)
+    @inline ν(i,j,I) = calculateμ(i,j,I,c.fᶠ,c.λν,a.ν)
+    @inline ρ(i,I) = calculateρν(i,I,c.fᶠ,c.λρ)
+    # conv_diff!(a.f,a.u⁰,a.σ,ν=(i,j,I)->a.ν[1]*calculateμ(i,j,I,c.fᶠ,c.λν[1]),ρ=(i,I)->calculateρν(i,I,c.fᶠ,c.λρ[1]), perdir=a.perdir,g=a.g)
+    conv_diff!(a.f,a.u⁰,a.σ,ν=ν,ρ=ρ, perdir=a.perdir,g=a.g)
     BDIM!(a); 
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
     calculateL!(a,c)
@@ -446,7 +468,9 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     advect!(a,c,c.f⁰,a.u⁰,a.u);
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
     vof_smooth!(2, c.f, c.fᶠ, c.α;perdir=c.perdir)
-    conv_diff!(a.f,a.u,a.σ,ν=(i,j,I)->a.ν*calculateμ(i,j,I,c.fᶠ,c.λν),ρ=(i,I)->calculateρν(i,I,c.fᶠ,c.λρ), perdir=a.perdir,g=a.g)
+    @inline ν_(i,j,I) = calculateμ(i,j,I,c.fᶠ,c.λν,a.ν)
+    @inline ρ_(i,I) = calculateρν(i,I,c.fᶠ,c.λρ)
+    conv_diff!(a.f,a.u,a.σ,ν=ν_,ρ=ρ_, perdir=a.perdir,g=a.g)
     BDIM!(a); a.u ./= 2;
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, f=2, perdir=a.perdir)
     calculateL!(a,c)
@@ -474,10 +498,10 @@ function CFL(a::Flow,c::cVOF)
     min(10.,fluxLimit,cVOFLimit)
 end
 
-calculateρν(d,I,f,λ) = ϕ(d,I,f)*(1-λ) + λ
+@inline calculateρν(d,I,f,λ) = (ϕ(d,I,f)*(1-λ) + λ)
 
-function calculateμ(i,j,I,f,λ)
-    (i==j) && return f[I-δ(i,I)]*(1-λ) + λ
+@inline function calculateμ(i,j,I,f,λ,ν)
+    (i==j) && return (f[I-δ(i,I)]*(1-λ) + λ)*ν
     n = length(I)
     s = zero(eltype(f))
     iteratorBase = [[0,1] for ii ∈ 1:n]
@@ -485,7 +509,7 @@ function calculateμ(i,j,I,f,λ)
         s += f[I-CartesianIndex(II)]
     end
     s /= 2^n
-    return s * (1-λ) + λ
+    return (s * (1-λ) + λ)*ν
 end
 
 function calculateL!(a::Flow{n}, c::cVOF) where {n}

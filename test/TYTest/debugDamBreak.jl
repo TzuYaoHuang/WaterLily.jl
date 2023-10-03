@@ -13,10 +13,6 @@ using Statistics
 using Interpolations
 using DelimitedFiles
 using LinearAlgebra
-using PyPlot
-using GLMakie
-# GLMakie.activate!()
-using PlotlyJS
 using Tables
 using CSV
 
@@ -95,12 +91,7 @@ function sim_gif!(sim;duration=1,step=0.1,verbose=true,R=inside(sim.flow.p),
     trueTime = [WaterLily.time(sim)]
     @time anim = @animate for tᵢ in range(t₀,t₀+duration;step)
     # @time for tᵢ in range(t₀,t₀+duration;step)
-        try
-            WaterLily.sim_step!(sim,tᵢ;remeasure)
-        catch y
-            println(y)
-            return diver,mass,maxU
-        end
+        WaterLily.sim_step!(sim,tᵢ;remeasure)
         for I∈inside(sim.flow.σ)
             sim.flow.σ[I] = WaterLily.div(I,sim.flow.u)
         end
