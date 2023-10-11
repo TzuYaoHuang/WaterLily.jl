@@ -9,9 +9,10 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
     c̄ :: AbstractArray{Int8}  # color function
     perdir :: NTuple  # periodic directions
     dirdir :: NTuple  # Dirichlet directions
-    λν:: T   # ratio of kinematic viscosity
+    λμ:: T   # ratio of dynamic viscosity
     λρ:: T   # ratio of density
-    function cVOF(N::NTuple{D}, n̂place, αplace; arr=Array, InterfaceSDF::Function=(x) -> 5-x[1], T=Float64, perdir=(0,), dirdir=(0,),λν=15.0074,λρ=0.001206) where D
+    boxIterator::Base.Iterators.ProductIterator
+    function cVOF(N::NTuple{D}, n̂place, αplace; arr=Array, InterfaceSDF::Function=(x) -> 5-x[1], T=Float64, perdir=(0,), dirdir=(0,),λμ=0.0180989244,λρ=0.001206) where D
         Ng = N .+ 2
         f = ones(T, Ng) |> arr
         fᶠ = copy(f)
@@ -20,8 +21,9 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
         applyVOF!(f,α,n̂,InterfaceSDF)
         BCVOF!(f,α,n̂;perdir=perdir,dirdir=dirdir)
         f⁰ = copy(f)
-        vof_smooth!(2, f, fᶠ, α;perdir=perdir)
-        new{D,T,typeof(f),typeof(n̂)}(f⁰,f,fᶠ,n̂,α,c̄,perdir,dirdir,λν,λρ)
+        vof_smooth!(4, f, fᶠ, α;perdir=perdir)
+        it = Iterators.product([[0,1] for ii ∈ 1:D]...)
+        new{D,T,typeof(f),typeof(n̂)}(f⁰,f,fᶠ,n̂,α,c̄,perdir,dirdir,λμ,λρ,it)
     end
 end
 
@@ -246,6 +248,7 @@ function vof_reconstruct!(f::AbstractArray{T,n},α::AbstractArray{T,n},n̂::Abst
     nhat = @view n̂[I,:] #nzeros(T,n)
     if (fc==0.0 || fc==1.0)
         f[I] = fc
+        for i∈1:n n̂[I,i] = 0 end
     else
         for d ∈ 1:n
             nhat[d] = (f[I-δ(d,I)]-f[I+δ(d,I)])*0.5
@@ -354,10 +357,20 @@ function freeint_update!(δt, f, fᶠ, n̂, α, u, u⁰, c̄;perdir=(0,),dirdir=
         maxf, maxid = findmax(f)
         minf, minid = findmin(f)
         if maxf-1 > tol
-            throw(DomainError(maxf-1, "max f{$maxid} ∉ [0,1] @ iOp=$iOp which is $d"))
+            try
+                error("max VOF @ $(maxid.I) ∉ [0,1] @ iOp=$iOp which is $d, Δf = $(maxf-1)")
+            catch e
+                Base.printstyled("ERROR: "; color=:red, bold=true)
+                Base.showerror(stdout, e, Base.catch_backtrace())
+            end
         end
         if minf < -tol
-            throw(DomainError(-minf, "min f{$minid} ∉ [0,1] @ iOp=$iOp which is $d"))
+            try
+                error("min VOF @ $(minid.I) ∉ [0,1] @ iOp=$iOp which is $d, Δf = $(-minf)")
+            catch e
+                Base.printstyled("ERROR: "; color=:red, bold=true)
+                Base.showerror(stdout, e, Base.catch_backtrace())
+            end
         end
         f[f.<=tol] .= 0.0
         f[f.>=1.0-tol] .= 1.0
@@ -452,10 +465,9 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     advect!(a,c,c.f,a.u⁰,a.u);
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
     a.u .= 0
-    vof_smooth!(2, c.f⁰, c.fᶠ, c.α;perdir=c.perdir)
-    @inline ν(i,j,I) = calculateμ(i,j,I,c.fᶠ,c.λν,a.ν)
-    @inline ρ(i,I) = calculateρν(i,I,c.fᶠ,c.λρ)
-    # conv_diff!(a.f,a.u⁰,a.σ,ν=(i,j,I)->a.ν[1]*calculateμ(i,j,I,c.fᶠ,c.λν[1]),ρ=(i,I)->calculateρν(i,I,c.fᶠ,c.λρ[1]), perdir=a.perdir,g=a.g)
+    vof_smooth!(4, c.f⁰, c.fᶠ, c.α;perdir=c.perdir)
+    @inline ν(i,j,I) = calculateμ(i,j,I,c.f⁰,c.λμ,a.ν,c.boxIterator)
+    @inline ρ(i,I) = calculateρ(i,I,c.f⁰,c.λρ)
     conv_diff!(a.f,a.u⁰,a.σ,ν=ν,ρ=ρ, perdir=a.perdir,g=a.g)
     BDIM!(a); 
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
@@ -467,9 +479,9 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     # corrector u → u¹
     advect!(a,c,c.f⁰,a.u⁰,a.u);
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
-    vof_smooth!(2, c.f, c.fᶠ, c.α;perdir=c.perdir)
-    @inline ν_(i,j,I) = calculateμ(i,j,I,c.fᶠ,c.λν,a.ν)
-    @inline ρ_(i,I) = calculateρν(i,I,c.fᶠ,c.λρ)
+    vof_smooth!(4, c.f, c.fᶠ, c.α;perdir=c.perdir)
+    @inline ν_(i,j,I) = calculateμ(i,j,I,c.f,c.λμ,a.ν,c.boxIterator)
+    @inline ρ_(i,I) = calculateρ(i,I,c.f,c.λρ)
     conv_diff!(a.f,a.u,a.σ,ν=ν_,ρ=ρ_, perdir=a.perdir,g=a.g)
     BDIM!(a); a.u ./= 2;
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, f=2, perdir=a.perdir)
@@ -477,9 +489,8 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     update!(b)
     project!(a,b,2);  
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
-    push!(a.Δt,min(CFL(a,c),1.1a.Δt[end]))
     c.f .= c.f⁰
-    # c.f⁰ .= c.f
+    push!(a.Δt,min(CFL(a,c),1.1a.Δt[end]))
 end
 
 @fastmath @inline function MaxTotalflux(I::CartesianIndex{d},u) where {d}
@@ -492,29 +503,28 @@ end
 
 function CFL(a::Flow,c::cVOF)
     @inside a.σ[I] = flux_out(I,a.u)
-    fluxLimit = inv(maximum(a.σ)+5*a.ν*max(1,c.λν/c.λρ))
+    fluxLimit = inv(maximum(a.σ)+5*a.ν*max(1,c.λμ/c.λρ))
     @inside a.σ[I] = MaxTotalflux(I,a.u)
     cVOFLimit = 0.5*inv(maximum(a.σ))
     min(10.,fluxLimit,cVOFLimit)
 end
 
-@inline calculateρν(d,I,f,λ) = (ϕ(d,I,f)*(1-λ) + λ)
+@inline calculateρ(d,I,f,λ) = (ϕ(d,I,f)*(1-λ) + λ)
 
-@inline function calculateμ(i,j,I,f,λ,ν)
-    (i==j) && return (f[I-δ(i,I)]*(1-λ) + λ)*ν
+@inline function calculateμ(i,j,I,f,λ,μ,it)
+    (i==j) && return (f[I-δ(i,I)]*(1-λ) + λ)*μ
     n = length(I)
     s = zero(eltype(f))
-    iteratorBase = [[0,1] for ii ∈ 1:n]
-    for II in Iterators.product(iteratorBase...)
+    for II in it
         s += f[I-CartesianIndex(II)]
     end
     s /= 2^n
-    return (s * (1-λ) + λ)*ν
+    return (s * (1-λ) + λ)*μ
 end
 
 function calculateL!(a::Flow{n}, c::cVOF) where {n}
     for d ∈ 1:n
-        @loop a.μ₀[I,d] /= calculateρν(d,I,c.fᶠ,c.λρ) over I∈inside(a.p)
+        @loop a.μ₀[I,d] /= calculateρ(d,I,c.fᶠ,c.λρ) over I∈inside(a.p)
     end
     BCVecPerNeu!(a.μ₀;Dirichlet=false, A=a.U, perdir=a.perdir)
 end

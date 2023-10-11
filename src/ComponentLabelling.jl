@@ -12,12 +12,13 @@ mutable struct aBubble
 end
 
 struct BubblesInfo 
-    labelField::AbstractArray
+    labelField::AbstractArray{Int}
     bubbleDict::Dict{Int,aBubble}
     labelCount::Vector{Int}
     function BubblesInfo(f)
+        f .= 0
         new(
-            zeros(Int,size(f)), 
+            f, 
             Dict{Int,aBubble}(),
             [0]
         )
@@ -32,6 +33,12 @@ function negI(i,I,N)
     else
         return CartesianIndex(ntuple(j -> j==i ? N[j]-1 : I[j], length(N)))
     end
+end
+
+function InitilizeBubbleInfo!(bInfo::BubblesInfo)
+    bInfo.labelField .= 0
+    empty!(bInfo.bubbleDict)
+    bInfo.labelCount .= 0
 end
 
 

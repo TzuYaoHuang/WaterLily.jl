@@ -16,3 +16,11 @@ lotus_oop-master/*
 slurm*
 *.sh*
 *#
+*.vti
+*.vtr
+*.vts
+*.vtu
+*.vtp
+*.vtm
+*.pvd
+*.pvt*
