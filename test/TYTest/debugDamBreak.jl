@@ -15,6 +15,7 @@ using DelimitedFiles
 using LinearAlgebra
 using Tables
 using CSV
+using Printf
 
 inside(a::AbstractArray) = CartesianIndices(map(ax->first(ax)+1:last(ax)-1,axes(a)))
 @inline CI(a...) = CartesianIndex(a...)
@@ -27,8 +28,9 @@ Return a CartesianIndex of dimension `N` which is one at index `i` and zero else
 δ(i,::Val{N}) where N = CI(ntuple(j -> j==i ? 1 : 0, N))
 δ(i,I::CartesianIndex{N}) where N = δ(i, Val{N}())
 
-N = 32
+N = 64
 computationID = "DamBreakHeun"*string(N)
+grav=9.81
 
 lx = ((1:N).-0.5)/N
 ly = ((1:N).-0.5)/N
@@ -39,6 +41,44 @@ function hydroDynP!(sim)
     sumρ = sum(ρ,dims=2)
     cumsumρ = sumρ .- cumsumρ 
     sim.flow.σ[2:end-1,2:end-1] .= ((sim.flow.p[2:end-1,2:end-1]+sim.flow.p[2:end-1,1:end-2])/2 + cumsumρ*sim.flow.g[2])/(0.5sim.U^2)
+end
+
+function KE(u,f,λρ)
+    N,n = WaterLily.size_u(u)
+    ke = zeros(eltype(f),2)
+    # for i∈1:n
+    #     for I ∈ WaterLily.inside_uWB(N,i)
+    #         buf = u[I,i]^2
+    #         fWater = WaterLily.ϕ(i,I,f)
+    #         if (I[i] == 2) || (I[i] == N[i])
+    #             ke[1] += 1*fWater*buf*0.5
+    #             ke[2] += λρ*(1-fWater)*buf*0.5
+    #         else
+    #             ke[1] += 1*fWater*buf
+    #             ke[2] += λρ*(1-fWater)*buf
+    #         end
+    #     end
+    # end
+    for I ∈ inside(f)
+        for i ∈ 1:n
+            buf = (u[I,i]+u[I+δ(i,I),i])^2*0.25
+            fWater = f[I]
+            ke[1] += 1*fWater*buf
+            ke[2] += λρ*(1-fWater)*buf
+        end
+    end
+    return ke/2
+end
+
+function PE(f,λρ,g,gravdir)
+    pe = zeros(eltype(f),2)
+    for I ∈ WaterLily.inside(f)
+        fWater = WaterLily.ϕ(0,I,f)
+        gh = g*(I[gravdir]-0.5)
+        pe[1] += 1*fWater*gh
+        pe[2] += λρ*(1-fWater)*gh
+    end
+    return pe
 end
 
 function flood(f::Array;shift=(0.,0.),cfill=:RdBu_11,clims=(),levels=10,kv...)
@@ -83,12 +123,14 @@ function sim_gif!(sim;duration=1,step=0.1,verbose=true,R=inside(sim.flow.p),
         end
         return locTemp
     end
-
+    ke = KE(sim.flow.u,sim.inter.f,sim.inter.λρ)
+    pe = PE(sim.inter.f,sim.inter.λρ,grav,2)
     diver = [Statistics.sum(abs.(sim.flow.σ[R]))]
     mass = [Statistics.mean(sim.inter.f[R])]
     maxU = [maximum(sqrt.(Statistics.sum(sim.flow.u.^2,dims=4)))]
     loc = [getFrontLocation(sim.inter.f)]
     trueTime = [WaterLily.time(sim)]
+    
     @time anim = @animate for tᵢ in range(t₀,t₀+duration;step)
     # @time for tᵢ in range(t₀,t₀+duration;step)
         WaterLily.sim_step!(sim,tᵢ;remeasure)
@@ -100,17 +142,18 @@ function sim_gif!(sim;duration=1,step=0.1,verbose=true,R=inside(sim.flow.p),
         push!(maxU,maximum(sqrt.(Statistics.sum(sim.flow.u.^2,dims=4))))
         push!(loc,getFrontLocation(sim.inter.f))
         push!(trueTime,WaterLily.time(sim))
+        ke = cat(ke,KE(sim.flow.u,sim.inter.f,sim.inter.λρ),dims=2)
+        pe = cat(pe,PE(sim.inter.f,sim.inter.λρ,grav,2),dims=2)
         Plots.contourf(lx,ly,clamp.(sim.flow.p[2:end-1,2:end-1]'/sim.U^2*2,0,1), aspect_ratio=:equal,color=:dense,levels=60,xlimit=[0,1],ylimit=[0,1],linewidth=0,clim=(0,1))
         Plots.contour!(lx,ly,sim.inter.f[2:end-1,2:end-1]', aspect_ratio=:equal,color=:Black,levels=[0.5],xlimit=[0,1],ylimit=[0,1],linewidth=2)
         plotbody && body_plot!(sim)
-        verbose && println("tU/L=",round(tᵢ,digits=4),
-            ", Δt=",sim.flow.Δt[end])
+        verbose && @printf("tU/L=%6.3f, ΔtU/L=%.8f\n",trueTime[end]*sim.U/sim.L,sim.flow.Δt[end]*sim.U/sim.L)
     end
     gif(anim, computationID*"_hydroDyn.gif", fps = 30)
-    return diver,mass,maxU,loc,trueTime
+    return diver,mass,maxU,loc,trueTime,ke,pe
 end
 
-function damBreak(NN;Re=493.954,g=9.81)
+function damBreak(NN;Re=493.954,g=grav)
     LDomain = (NN,NN)
     H = NN/4
     LScale = H
@@ -130,17 +173,19 @@ function damBreak(NN;Re=493.954,g=9.81)
         end
     end
 
-    return WaterLily.TwoPhaseSimulation(LDomain, (0,0), LScale;U=UScale, Δt=0.01,grav=(0,-g), ν=ν, InterfaceSDF=interSDF, T=Float64,λν=1e-3,λρ=1e-3)
+    return WaterLily.TwoPhaseSimulation(LDomain, (0,0), LScale;U=UScale, Δt=0.01,grav=(0,-g), ν=ν, InterfaceSDF=interSDF, T=Float64,λμ=1e-3,λρ=1e-3)
 end
 
 
 sim = damBreak(N)
 
-diver,mass,maxU,loc,trueTime = sim_gif!(sim,duration=10, step=0.01,clims=(0,1),plotbody=false,verbose=true,levels=0.0:0.05:1.0,remeasure=false,cfill=:RdBu,linewidth=2,xlimit=[0,32],ylimit=[0,32],shift=(-0.5,-0.5));
+diver,mass,maxU,loc,trueTime,ke,pe = sim_gif!(sim,duration=10, step=0.01,clims=(0,1),plotbody=false,verbose=true,levels=0.0:0.05:1.0,remeasure=false,cfill=:RdBu,linewidth=2,xlimit=[0,32],ylimit=[0,32],shift=(-0.5,-0.5));
 
 trueTime *= sim.U/sim.L
 maxU /= sim.U
 loc /= sim.L
+ke /= sim.U^2*sim.L^2
+pe /= sim.U^2*sim.L^2
 
 MartinData = CSV.File("DamBreakFront_SunTao.csv") |> Tables.matrix
 
@@ -152,6 +197,17 @@ Plots.savefig(computationID*"_MassDivergence.png")
 
 Plots.plot(trueTime,maxU)
 Plots.savefig(computationID*"_MaxU.png")
+
+Plots.plot()
+Plots.plot!(trueTime,ke[1,:],label="K.E. Water",color=:blue,linestyle=:dash)
+Plots.plot!(trueTime,pe[1,:],label="P.E. Water",color=:blue,linestyle=:dot)
+Plots.plot!(trueTime,ke[1,:].+pe[1,:],label="T.E. Water",color=:blue,linestyle=:solid)
+Plots.plot!(trueTime,ke[2,:],label="K.E. Air",color=:green,linestyle=:dash)
+Plots.plot!(trueTime,pe[2,:],label="P.E. Air",color=:green,linestyle=:dot)
+Plots.plot!(trueTime,ke[2,:].+pe[2,:],label="T.E. Air",color=:green,linestyle=:solid)
+Plots.plot!(trueTime,ke[1,:].+pe[1,:].+ke[2,:].+pe[2,:],label="T.E. All",color=:black,linestyle=:solid)
+Plots.savefig(computationID*"_Energy.png")
+
 
 Plots.plot(trueTime,loc,color=:black,linewidth=1.25,label="Simulation")
 Plots.scatter!(MartinData[:,1],MartinData[:,2],color=:black,label="Sun and Tao (2010)")
