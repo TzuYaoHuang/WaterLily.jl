@@ -22,8 +22,9 @@ Return a CartesianIndex of dimension `N` which is one at index `i` and zero else
 
 # CASE configuration
 N = 96
-q = 0.5
-computationID =  @sprintf("3DNewVortexBreak%d_q%.2f",N,q)
+q = 1.0
+disturb = 0.02
+computationID =  @sprintf("3DNewVortexBreak%d_q%.2f_dis%.2f",N,q,disturb)
 println("You are now running: "*computationID)
 
 function calculateDiv!(flow)
@@ -34,16 +35,17 @@ end
 
 function puresim!(sim,duration,recostep)
     timeCurrent = WaterLily.sim_time(sim)
-    timeArray = timeCurrent:recostep:duration
+    timeArray = (timeCurrent+recostep):recostep:duration
 
     numProject = 3
     for i ∈ 1:numProject
         WaterLily.project!(sim.flow,sim.pois)
         WaterLily.BCVecPerNeu!(sim.flow.u;Dirichlet=true, A=sim.flow.U, perdir=sim.flow.perdir)
-        println("Projected the initial velocit field to the divergence free space. ($i/$numProject)")
+        println("Projected the initial velocity field to the divergence free space. ($i/$numProject)")
     end
 
     trueTime = [WaterLily.time(sim)]
+    print(trueTime)
 
     iTime = 0
     jldsave("JLD2/"*computationID*"VelVOF_"*string(iTime)*".jld2"; u=Array(sim.flow.u), f=Array(sim.inter.f))
@@ -52,6 +54,7 @@ function puresim!(sim,duration,recostep)
         iTime += 1
         jldsave("JLD2/"*computationID*"VelVOF_"*string(iTime)*".jld2"; u=Array(sim.flow.u), f=Array(sim.inter.f))
         push!(trueTime,WaterLily.time(sim))
+        print(trueTime)
         @printf("tU/L=%6.3f, ΔtU/L=%.8f\n",trueTime[end]*sim.U/sim.L,sim.flow.Δt[end]*sim.U/sim.L)
         jldsave(
             "JLD2/"*computationID*"General.jld2"; 
@@ -87,7 +90,7 @@ function multiphaseQVortex(NN; Re=4000, T=Float32, mem=Array)
 
         # velocities in cylindrical coordinate
         uTheta  = q/r*U*(1-exp(-r^2))*compactRSupport
-        uRadial = 0.1U/r*(1-exp(-r^2))/0.63817*sin(2*pi/λ*z)*compactRSupport
+        uRadial = disturb*U/r*(1-exp(-r^2))/0.63817*sin(2*pi/λ*z)*compactRSupport
         uAxial  =     U*(1-exp(-r^2))  # wake-like axial flow
 
         zConnect = 1.0
@@ -115,7 +118,7 @@ function multiphaseQVortex(NN; Re=4000, T=Float32, mem=Array)
     )
 end
 
-dur = 160
+dur = 200
 stp = 0.05
 
 sim = multiphaseQVortex(N)

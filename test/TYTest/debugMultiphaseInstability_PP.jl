@@ -113,9 +113,11 @@ end
 N = 128
 q = 1.0
 computationID = "3DNewVortexBreak"*string(N)
-# N = 96
-# q = 2.0
-# computationID =  @sprintf("3DNewVortexBreak%d_q%.2f",N,q)
+N = 96
+q = 1.0
+disturb = 0.02
+computationID =  @sprintf("3DNewVortexBreak%d_q%.2f_dis%.2f",N,q,disturb)
+println("You are now processing: "*computationID)
 
 # READ the configuration
 JLDFile = jldopen("JLD2/"*computationID*"General.jld2")
@@ -129,7 +131,6 @@ catch err
 end
 
 trueTime = JLDFile["trueTime"]; trueTime .*= UScale/LScale
-trueTime = Array(0:0.05:154.45)
 dtTrueTime = trueTime[2:end] .- trueTime[1:end-1]
 dts = JLDFile["dts"]; dts .*= UScale/LScale
 
@@ -222,7 +223,7 @@ fig, ax, lineplot = GLMakie.contour(obs,levels=[0.5],alpha=1,isorange=0.3)
         uMeanRadialList[iTime,:] = uMeanRadial
     end
 
-    if true
+    if false
         WaterLily.vof_reconstruct!(VOFStore,inteceStorage,normalStorage;perdir=(1,2,3),dirdir=(0,))
         WaterLily.InitilizeBubbleInfo!(bInfo)
         WaterLily.ICCL_M!(bInfo,1 .- VOFStore,θs,normalStorage)
@@ -264,7 +265,11 @@ ke ./= LScale^3
 ωe ./= LScale^3
 keT = ke[:,1] .+ ke[:,2]
 ωeT = ωe[:,1] .+ ωe[:,2]
-dωeTdt = (ωeT[2:end]-ωeT[1:end-1])./dtTrueTime
+dωeTdt = (ωeT[2:end]-ωeT[1:end-1])./dtTrueTime; dωeTdt[1] = dωeTdt[2]
+dkeTdt = (keT[2:end]-keT[1:end-1])./dtTrueTime; dkeTdt[1] = dkeTdt[2]
+ωeTMid = (ωeT[2:end]+ωeT[1:end-1])/2
+effectiveRe = -2*ωeTMid./dkeTdt
+quantileRe = quantile(effectiveRe)
 RelVOF = abs.((avgVOF.-avgVOF[1])/avgVOF[1]).+1e-20
 
 # Divergence and mass conservation
@@ -289,6 +294,13 @@ Plots.savefig(computationID*"_Enstrophy.png")
 Plots.plot()
 Plots.plot!(midTrueTime,dωeTdt,legend=false,color=:black,linestyle=:solid)
 Plots.savefig(computationID*"_DiffEnstrophy.png")
+
+Plots.plot()
+Plots.plot!(midTrueTime,effectiveRe,color=:black,linestyle=:solid)
+Plots.hline!(quantileRe[3:4],color=:blue,linestyle=:dash)
+Plots.hline!(quantileRe[2:2],color=:deepskyblue4,linestyle=:dash)
+Plots.plot!(title=@sprintf("Median Re: %.2f, 3rd quantile Re: %.2f", quantileRe[3], quantileRe[4]),legend=false)
+Plots.savefig(computationID*"_EffectiveRe.png")
 
 # Check Poisson solver
 Plots.plot()
