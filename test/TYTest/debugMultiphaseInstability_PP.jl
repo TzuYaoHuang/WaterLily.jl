@@ -117,7 +117,7 @@ N = 96
 q = 1.0
 disturb = 0.02
 computationID =  @sprintf("3DNewVortexBreak%d_q%.2f_dis%.2f",N,q,disturb)
-println("You are now processing: "*computationID)
+println("You are now processing: "*computationID); flush(stdout)
 
 # READ the configuration
 JLDFile = jldopen("JLD2/"*computationID*"General.jld2")
@@ -251,7 +251,7 @@ fig, ax, lineplot = GLMakie.contour(obs,levels=[0.5],alpha=1,isorange=0.3)
     close(JLDFile)
 
     if mod(iTime,ReportFreq) == 1
-        @printf("%6.2f%% (%5d/%5d) of files being processed.\n", iTime/NTime*100, iTime, NTime)
+        @printf("%6.2f%% (%5d/%5d) of files being processed.\n", iTime/NTime*100, iTime, NTime); flush(stdout)
     end
 end
 gif(animXSlice, computationID*"_"*"xSlice.gif", fps=frameRate)

@@ -25,7 +25,7 @@ N = 96
 q = 1.0
 disturb = 0.02
 computationID =  @sprintf("3DNewVortexBreak%d_q%.2f_dis%.2f",N,q,disturb)
-println("You are now running: "*computationID)
+println("You are now running: "*computationID); flush(stdout)
 
 function calculateDiv!(flow)
     for I∈inside(flow.σ)
@@ -41,11 +41,10 @@ function puresim!(sim,duration,recostep)
     for i ∈ 1:numProject
         WaterLily.project!(sim.flow,sim.pois)
         WaterLily.BCVecPerNeu!(sim.flow.u;Dirichlet=true, A=sim.flow.U, perdir=sim.flow.perdir)
-        println("Projected the initial velocity field to the divergence free space. ($i/$numProject)")
+        println("Projected the initial velocity field to the divergence free space. ($i/$numProject)"); flush(stdout)
     end
 
     trueTime = [WaterLily.time(sim)]
-    print(trueTime)
 
     iTime = 0
     jldsave("JLD2/"*computationID*"VelVOF_"*string(iTime)*".jld2"; u=Array(sim.flow.u), f=Array(sim.inter.f))
@@ -54,8 +53,7 @@ function puresim!(sim,duration,recostep)
         iTime += 1
         jldsave("JLD2/"*computationID*"VelVOF_"*string(iTime)*".jld2"; u=Array(sim.flow.u), f=Array(sim.inter.f))
         push!(trueTime,WaterLily.time(sim))
-        print(trueTime)
-        @printf("tU/L=%6.3f, ΔtU/L=%.8f\n",trueTime[end]*sim.U/sim.L,sim.flow.Δt[end]*sim.U/sim.L)
+        @printf("tU/L=%6.3f, ΔtU/L=%.8f\n",trueTime[end]*sim.U/sim.L,sim.flow.Δt[end]*sim.U/sim.L); flush(stdout)
         jldsave(
             "JLD2/"*computationID*"General.jld2"; 
             trueTime,
