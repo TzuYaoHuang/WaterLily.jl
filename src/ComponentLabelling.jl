@@ -81,7 +81,7 @@ function newLabel!(bDict,labelField,labelCount,p)
 end
 newLabel!(bInfo::BubblesInfo,p) = newLabel!(bInfo.bubbleDict, bInfo.labelField, bInfo.labelCount, p)
 
-function InformedCCL!(bInfo,v,θ,n̂,I)
+function InformedCCL!(bInfo,v,θ,n̂,I;useNormConnect=true)
     normConnect = true
     N = size(v)
     n = length(N)
@@ -92,18 +92,20 @@ function InformedCCL!(bInfo,v,θ,n̂,I)
             pl = getLabel(p,bInfo)
             pᵖl = getLabel(pᵖ,bInfo)
 
-            normConnect = (n̂[p,d]*n̂[pᵖ,d]>0)
-            if (n̂[pᵖ,d]<0) && (n̂[p,d]>0)
-                normConnect = true
-            end
-            if (n̂[pᵖ,d]<0) && (v[p]==1)
-                normConnect = true
-            end
-            if (n̂[p,d]>0) && (v[pᵖ]==1)
-                normConnect = true
-            end
-            if (v[p]==1) && (v[pᵖ]==1)
-                normConnect = true
+            if useNormConnect
+                normConnect = (n̂[p,d]*n̂[pᵖ,d]>0)
+                if (n̂[pᵖ,d]<0) && (n̂[p,d]>0)
+                    normConnect = true
+                end
+                if (n̂[pᵖ,d]<0) && (v[p]==1)
+                    normConnect = true
+                end
+                if (n̂[p,d]>0) && (v[pᵖ]==1)
+                    normConnect = true
+                end
+                if (v[p]==1) && (v[pᵖ]==1)
+                    normConnect = true
+                end
             end
             
             if (pᵖl==0) && (pl==0)
@@ -149,10 +151,10 @@ function ProjectBubbleInfoToVOFFiled!(bInfo::BubblesInfo)
     end
 end
 
-function ICCL_M!(bInfo,v,θs,n̂)
+function ICCL_M!(bInfo,v,θs,n̂;useNormConnect=true)
     for θ ∈ θs
         for I ∈ inside(v)
-            InformedCCL!(bInfo,v,θ,n̂,I)
+            InformedCCL!(bInfo,v,θ,n̂,I,useNormConnect=useNormConnect)
         end
     end
     CalculateBubbleInfo!(bInfo,v)

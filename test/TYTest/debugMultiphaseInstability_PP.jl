@@ -115,7 +115,7 @@ q = 1.0
 computationID = "3DNewVortexBreak"*string(N)
 N = 96
 q = 1.0
-disturb = 0.02
+disturb = 0.05
 computationID =  @sprintf("3DNewVortexBreak%d_q%.2f_dis%.2f",N,q,disturb)
 println("You are now processing: "*computationID); flush(stdout)
 
@@ -223,10 +223,10 @@ fig, ax, lineplot = GLMakie.contour(obs,levels=[0.5],alpha=1,isorange=0.3)
         uMeanRadialList[iTime,:] = uMeanRadial
     end
 
-    if false
+    if true
         WaterLily.vof_reconstruct!(VOFStore,inteceStorage,normalStorage;perdir=(1,2,3),dirdir=(0,))
         WaterLily.InitilizeBubbleInfo!(bInfo)
-        WaterLily.ICCL_M!(bInfo,1 .- VOFStore,θs,normalStorage)
+        WaterLily.ICCL_M!(bInfo,1 .- VOFStore,θs,normalStorage,useNormConnect=false)
         bubbleR[iTime] = [bubble.r for (label,bubble) ∈ bInfo.bubbleDict]
     end
 

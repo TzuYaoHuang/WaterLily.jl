@@ -107,13 +107,15 @@ Three-Dimensional Forward Problem.
 Get volume fraction from intersection.
 """
 function f3(m1, m2, m3, a)
+    tol = eps(typeof(m1))
+    m1 += tol
+    m2 += tol
     m12 = m1 + m2
-    tol = 10eps(typeof(m1))
 
     if a < m1
         f3 = a^3/(6.0*m1*m2*m3)
     elseif a < m2
-        f3 = a*(a - m1)/(2.0*m2*m3) + m1^2/(6.0*m2*m3 + tol)
+        f3 = a*(a - m1)/(2.0*m2*m3) + m1^2/(6.0*m2*m3)
     elseif a < min(m3, m12)
         f3 = (a^2*(3.0*m12 - a) + m1^2*(m1 - 3.0*a) + m2^2*(m2 - 3.0*a))/(6*m1*m2*m3)
     elseif m3 < m12
@@ -159,11 +161,13 @@ Three-Dimensional Inverse Problem.
 Get intercept with volume fraction.
 """
 function a3(m1, m2, m3, v)
+    tol = eps(typeof(m1))
+    m1 += tol
+    m2 += tol
     m12 = m1 + m2
-    tol = 10eps(typeof(m1))
-
+    
     p = 6.0*m1*m2*m3
-    v1 = m1^2/(6.0*m2*m3 + tol)
+    v1 = m1^2/(6.0*m2*m3)
     v2 = v1 + (m2 - m1)/(2.0*m3)
     v3 = ifelse(
         m3 < m12, 
