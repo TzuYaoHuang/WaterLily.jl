@@ -9,6 +9,7 @@ using JLD2
 using Plots
 using Statistics
 using StatsBase
+using WriteVTK
 using GLMakie
 GLMakie.activate!()
 
@@ -152,6 +153,7 @@ VelocityStore = zeros(N+2,N+2,N+2,3)
 VOFStore = zeros(N+2,N+2,N+2)
 DivergenceStore = zeros(N+2,N+2,N+2)
 VorticityStore = zeros(N+2,N+2,N+2,3)
+λ2Store = zeros(N+2,N+2,N+2)
 
 VelocityAtCollocated = zeros(N,N,N,3)
 VelocityCylatCollocated = zeros(N,N,N,3)
@@ -212,6 +214,17 @@ fig, ax, lineplot = GLMakie.contour(obs,levels=[0.5],alpha=1,isorange=0.3)
     avgDiv[iTime] = CalculateMeanScalar(DivergenceStore,func=abs,R=insidef)
     ke[iTime,:] = KE(VelocityStore,VOFStore,λρ)
     ωe[iTime,:] = KE(VorticityStore,VOFStore,λρ)
+    for I ∈ inside(λ2Store)
+        λ2Store[I] = WaterLily.λ₂(I,VelocityStore)*LScale^2
+    end
+
+    if true
+        vtk_grid("VTK/"*computationID*"VelVOF_"*string(iTime-1), xcen, xcen, xcen) do vtk
+            vtk["VOF"] = @views VOFStore[inside(VOFStore)]
+            # vtk["Vel"] = @views (VelocityStore[inside(VOFStore),1],VelocityStore[inside(VOFStore),2],VelocityStore[inside(VOFStore),3])
+            vtk["l2"] = @views λ2Store[inside(λ2Store)]
+        end
+    end
 
     if false
         StaggerToCollocateVel!(VelocityStore, VelocityAtCollocated)
@@ -223,7 +236,7 @@ fig, ax, lineplot = GLMakie.contour(obs,levels=[0.5],alpha=1,isorange=0.3)
         uMeanRadialList[iTime,:] = uMeanRadial
     end
 
-    if true
+    if false
         WaterLily.vof_reconstruct!(VOFStore,inteceStorage,normalStorage;perdir=(1,2,3),dirdir=(0,))
         WaterLily.InitilizeBubbleInfo!(bInfo)
         WaterLily.ICCL_M!(bInfo,1 .- VOFStore,θs,normalStorage,useNormConnect=false)
