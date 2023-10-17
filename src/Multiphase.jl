@@ -41,7 +41,7 @@ function applyVOF!(f,α,n̂,FreeSurfsdf,n,I)
     if abs2(α[I])>n 
         f[I] = ifelse(α[I]>0,0,1)
     else
-        nhat = ForwardDiff.gradient(FreeSurfsdf,(loc(0,I)+loc(I))*0.5);
+        nhat = ForwardDiff.gradient(FreeSurfsdf,(loc(0,I)+loc(I))/2);
         nhat /= sqrt(sum(nhat.^2));
         f[I] = vof_vol(nhat,-α[I]);
     end
@@ -90,7 +90,7 @@ function vof_smooth!(itm, f::AbstractArray{T,d}, sf::AbstractArray{T,d}, rf::Abs
     N = size(f)
     rf .= f
     for it ∈ 1:itm
-        sf .= 0.0
+        sf .= 0
         for j ∈ 1:d
             @loop sf[I] += rf[I+δ(j, I)] + rf[I-δ(j, I)] + 2*rf[I] over I ∈ inside(rf)
         end
@@ -108,37 +108,34 @@ Get volume fraction from intersection.
 """
 function f3(m1, m2, m3, a)
     tol = eps(typeof(m1))
-    m1 += tol
-    m2 += tol
     m12 = m1 + m2
 
     if a < m1
-        f3 = a^3/(6.0*m1*m2*m3)
+        f3 = a^3/(6*m1*m2*m3)
     elseif a < m2
-        f3 = a*(a - m1)/(2.0*m2*m3) + m1^2/(6.0*m2*m3)
+        f3 = a*(a - m1)/(2*m2*m3) + m1^2/max(6*m2*m3,tol)
     elseif a < min(m3, m12)
-        f3 = (a^2*(3.0*m12 - a) + m1^2*(m1 - 3.0*a) + m2^2*(m2 - 3.0*a))/(6*m1*m2*m3)
+        f3 = (a^2*(3*m12 - a) + m1^2*(m1 - 3*a) + m2^2*(m2 - 3*a))/(6*m1*m2*m3)
     elseif m3 < m12
-        f3 = (a^2*(3.0 - 2.0*a) + m1^2*(m1 - 3.0*a) + m2^2*(m2 - 3.0*a) + m3^2*(m3 - 3.0*a))/(6*m1*m2*m3)
+        f3 = (a^2*(3 - 2*a) + m1^2*(m1 - 3*a) + m2^2*(m2 - 3*a) + m3^2*(m3 - 3*a))/(6*m1*m2*m3)
     else
-        f3 = (2.0*a - m12)/(2.0*m3)
+        f3 = (2*a - m12)/(2*m3)
     end
 
     return f3
 end
 
-function proot(c0, c1, c2, c3)
+function proot(c0::T, c1::T, c2, c3) where T
     a0 = c0/c3
     a1 = c1/c3
     a2 = c2/c3
 
-    p0 = a1/3.0 - a2^2/9.0
-    q0 = (a1*a2 - 3.0*a0)/6.0 - a2^3/27.0
-    t = acos(q0/sqrt(-p0^3))/3.0
+    p0 = a1/3 - a2^2/9
+    q0 = (a1*a2 - 3*a0)/6 - a2^3/27
+    q0 = q0>eps(T) ? q0 : zero(T)
+    t = acos(q0/sqrt(-p0^3))/3
 
-    proot = sqrt(-p0)*(sqrt(3.0)*sin(t) - cos(t)) - a2/3.0
-
-    return proot
+    return sqrt(-p0)*(sqrt(T(3))*sin(t) - cos(t)) - a2/3
 end
 
 """
@@ -162,37 +159,35 @@ Get intercept with volume fraction.
 """
 function a3(m1, m2, m3, v)
     tol = eps(typeof(m1))
-    m1 += tol
-    m2 += tol
     m12 = m1 + m2
-    
-    p = 6.0*m1*m2*m3
-    v1 = m1^2/(6.0*m2*m3)
-    v2 = v1 + (m2 - m1)/(2.0*m3)
+
+    p = 6*m1*m2*m3
+    v1 = m1^2/max(6*m2*m3,tol)
+    v2 = v1 + (m2 - m1)/(2*m3)
     v3 = ifelse(
         m3 < m12, 
-        (m3^2*(3.0*m12 - m3) + m1^2*(m1 - 3.0*m3) + m2^2*(m2 - 3.0*m3))/p,
-        m12*0.5/m3
+        (m3^2*(3*m12 - m3) + m1^2*(m1 - 3*m3) + m2^2*(m2 - 3*m3))/p,
+        m12/2/m3
     )
 
     if v < v1
-        a3 = (p*v)^(1.0/3.0)
+        a3 = cbrt(p*v)
     elseif v < v2
-        a3 = 0.5*(m1 + sqrt(m1^2 + 8.0*m2*m3*(v - v1)))
+        a3 = m1 + sqrt(m1^2 + 8*m2*m3*(v - v1))/2
     elseif v < v3
         c0 = m1^3 + m2^3 - p*v
-        c1 = -3.0*(m1^2 + m2^2)
-        c2 = 3.0*m12
+        c1 = -3*(m1^2 + m2^2)
+        c2 = 3*m12
         c3 = -1
         a3 = proot(c0, c1, c2, c3)
     elseif m3 < m12
         c0 = m1^3 + m2^3 + m3^3 - p*v
-        c1 = -3.0*(m1^2 + m2^2 + m3^2)
+        c1 = -3*(m1^2 + m2^2 + m3^2)
         c2 = 3
         c3 = -2
         a3 = proot(c0, c1, c2, c3)
     else
-        a3 = m3*v + m12*0.5
+        a3 = m3*v + m12/2
     end
 
     return a3
@@ -207,11 +202,11 @@ function vof_int(n1, n2, n3, g)
     t = abs(n1) + abs(n2) + abs(n3)
     if g != 0.5
         m1, m2, m3 = sort3(abs(n1)/t, abs(n2)/t, abs(n3)/t)
-        a = a3(m1, m2, m3, ifelse(g < 0.5, g, 1.0 - g))
+        a = a3(m1, m2, m3, ifelse(g < 0.5, g, 1 - g))
     else
         a = 0.5
     end
-    return ifelse(g < 0.5, a, 1.0 - a)*t + min(n1, 0.0) + min(n2, 0.0) + min(n3, 0.0)
+    return ifelse(g < 0.5, a, 1 - a)*t + min(n1, 0) + min(n2, 0) + min(n3, 0)
 end
 
 vof_vol(v::AbstractArray{T,1}, b) where T = (
@@ -221,19 +216,19 @@ vof_vol(v::AbstractArray{T,1}, b) where T = (
 )
 function vof_vol(n1, n2, n3, b)
     t = abs(n1) + abs(n2) + abs(n3)
-    a = (b - min(n1, 0.0) - min(n2, 0.0) - min(n3, 0.0))/t
+    a = (b - min(n1, 0) - min(n2, 0) - min(n3, 0))/t
 
     if a <= 0.0 || a == 0.5 || a >= 1.0
-        vof_vol = min(max(a, 0.0), 1.0)
+        vof_vol = min(max(a, 0), 1)
     else
         m1, m2, m3 = sort3(abs(n1)/t, abs(n2)/t, abs(n3)/t)
-        t = f3(m1, m2, m3, ifelse(a < 0.5, a, 1.0 - a))
-        vof_vol = ifelse(a < 0.5, t, 1.0 - t)
+        t = f3(m1, m2, m3, ifelse(a < 0.5, a, 1 - a))
+        vof_vol = ifelse(a < 0.5, t, 1 - t)
     end
 end
 
 function vof_height(I, f, i)
-    h = 0.0
+    h = zero(eltype(f))
     I -= δ(i,I)
     for j ∈ 1:3
         h += f[I]
@@ -255,17 +250,17 @@ function vof_reconstruct!(f::AbstractArray{T,n},α::AbstractArray{T,n},n̂::Abst
         for i∈1:n n̂[I,i] = 0 end
     else
         for d ∈ 1:n
-            nhat[d] = (f[I-δ(d,I)]-f[I+δ(d,I)])*0.5
+            nhat[d] = (f[I-δ(d,I)]-f[I+δ(d,I)])/2
         end
         dc = myargmax(n,nhat)
         for d ∈ 1:n
             if (d == dc)
-                nhat[d] = copysign(1.0,nhat[d])
+                nhat[d] = copysign(1,nhat[d])
             else
                 hu = vof_height(I+δ(d,I), f, dc)
                 hc = vof_height(I       , f, dc)
                 hd = vof_height(I-δ(d,I), f, dc)
-                nhat[d] = -(hu-hd)*0.5
+                nhat[d] = -(hu-hd)/2
                 if d ∉ dirdir && d ∉ perdir
                     if I[d] == N[d]-1
                         nhat[d] = -(hc - hd)
@@ -273,7 +268,7 @@ function vof_reconstruct!(f::AbstractArray{T,n},α::AbstractArray{T,n},n̂::Abst
                         nhat[d] = -(hu - hc)
                     end
                 elseif (hu+hd==0.0 || hu+hd==6.0)
-                    nhat .= 0.0
+                    nhat .= 0
                 elseif abs(nhat[d]) > 0.5
                     if (nhat[d]*(fc-0.5) >= 0.0)
                         nhat[d] = -(hu - hc)
@@ -303,23 +298,21 @@ end
 
 function vof_flux!(d,f,α,n̂,u,u⁰,uMulp,fᶠ)
     N,n = size_u(n̂)
-    fᶠ .= 0.0
-    @loop vof_flux!(fᶠ,d,f,α,n̂,0.5*(u[IFace,d]+u⁰[IFace,d])*uMulp,IFace) over IFace ∈ inside_uWB(N,d)
+    fᶠ .= 0
+    @loop vof_flux!(fᶠ,d,f,α,n̂,(u[IFace,d]+u⁰[IFace,d])*uMulp/2,IFace) over IFace ∈ inside_uWB(N,d)
 end
 function vof_flux!(fᶠ::AbstractArray{T,n},d,fIn::AbstractArray{T,n},α::AbstractArray{T,n},n̂::AbstractArray{T,nv},dl,IFace::CartesianIndex) where {T,n,nv}
     ICell = IFace;
-    flux = 0.0
-    if dl == 0.0
-    else
+    flux = zero(T)
+    if dl != 0.0
         if (dl > 0.0) ICell -= δ(d,IFace) end
         f = fIn[ICell]
         nhat = @view n̂[ICell,:]
         if (sum(abs,nhat)==0.0 || f == 0.0 || f == 1.0)
             flux = f*dl
         else
-            dl = dl
             a = α[ICell]
-            if (dl > 0.0) a -= nhat[d]*(1.0-dl) end
+            if (dl > 0.0) a -= nhat[d]*(1-dl) end
             nhatOrig = nhat[d]
             nhat[d] *= abs(dl)
             flux = vof_vol(nhat, a)*dl
@@ -355,7 +348,7 @@ function freeint_update!(δt, f, fᶠ, n̂, α, u, u⁰, c̄;perdir=(0,),dirdir=
         vof_reconstruct!(f,α,n̂,perdir=perdir,dirdir=dirdir)
         vof_flux!(d,f,α,n̂,u,u⁰,uMulp,fᶠ)
         @loop (
-            f[I] += -∂(d,I+δ(d,I),fᶠ) + c̄[I]*(∂(d,I,u)+∂(d,I,u⁰))*0.5uMulp
+            f[I] += -∂(d,I+δ(d,I),fᶠ) + c̄[I]*(∂(d,I,u)+∂(d,I,u⁰))*uMulp/2
         ) over I ∈ inside(f)
 
         maxf, maxid = findmax(f)
@@ -376,8 +369,8 @@ function freeint_update!(δt, f, fᶠ, n̂, α, u, u⁰, c̄;perdir=(0,),dirdir=
                 Base.showerror(stdout, e, Base.catch_backtrace())
             end
         end
-        f[f.<=tol] .= 0.0
-        f[f.>=1.0-tol] .= 1.0
+        f[f.<=tol] .= 0
+        f[f.>=1-tol] .= 1
         BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
     end
 end
@@ -391,7 +384,7 @@ end
 
 function conv_diff!(r,u,Φ;ν=(i,j,I) -> 0.1,ρ=(i,I)->1,perdir=(0,),g=(0,0,0))
 # function conv_diff!(r,u,Φ,ν,ρ,perdir,g)
-    r .= 0.
+    r .= 0
     N,n = size_u(u)
     for i ∈ 1:n, j ∈ 1:n
         # if it is periodic direction
@@ -509,8 +502,8 @@ function CFL(a::Flow,c::cVOF)
     @inside a.σ[I] = flux_out(I,a.u)
     fluxLimit = inv(maximum(a.σ)+5*a.ν*max(1,c.λμ/c.λρ))
     @inside a.σ[I] = MaxTotalflux(I,a.u)
-    cVOFLimit = 0.5*inv(maximum(a.σ))
-    min(10.,fluxLimit,cVOFLimit)
+    cVOFLimit = inv(maximum(a.σ))/2
+    min(10,fluxLimit,cVOFLimit)
 end
 
 @inline calculateρ(d,I,f,λ) = (ϕ(d,I,f)*(1-λ) + λ)
