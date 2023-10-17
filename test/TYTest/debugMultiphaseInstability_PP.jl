@@ -10,6 +10,8 @@ using Plots
 using Statistics
 using StatsBase
 using WriteVTK
+using GLMakie
+GLMakie.activate!()
 
 # DEFINE some useful functions
 animAlpha(i,numFiles;y0 = 0.01) = 4*(1-y0)*(i/numFiles-0.5)^3 + (1+y0)/2
@@ -194,10 +196,12 @@ inteceStorage = zeros((N+2,N+2,N+2))
 frameRate = 50
 
 animXSlice = Animation()
-animYSlice = Animation()
 animZSlice = Animation()
+dat = VOFStore[inside(VOFStore)] |> Array;
+obs = Insidef!(VOFStore,dat) |> Observable;
+fig, ax, lineplot = GLMakie.contour(obs,levels=[0.5],alpha=1,isorange=0.3)
 
-@time for iTime ∈ 1:NTime
+@time record(fig, computationID*"_"*"fIso.mp4", 1:NTime; framerate=frameRate) do iTime
     # Read in the file
     JLDFile = jldopen("JLD2/"*computationID*"VelVOF_"*string(iTime-1)*".jld2")
     VelocityStore .= JLDFile["u"]; VelocityStore ./= UScale
@@ -210,11 +214,11 @@ animZSlice = Animation()
     avgDiv[iTime] = CalculateMeanScalar(DivergenceStore,func=abs,R=insidef)
     ke[iTime,:] = KE(VelocityStore,VOFStore,λρ)
     ωe[iTime,:] = KE(VorticityStore,VOFStore,λρ)
-    
-    if false
-        for I ∈ inside(λ2Store)
-            λ2Store[I] = WaterLily.λ₂(I,VelocityStore)*LScale^2
-        end
+    for I ∈ inside(λ2Store)
+        λ2Store[I] = WaterLily.λ₂(I,VelocityStore)*LScale^2
+    end
+
+    if true
         vtk_grid("VTK/"*computationID*"VelVOF_"*string(iTime-1), xcen, xcen, xcen) do vtk
             vtk["VOF"] = @views VOFStore[inside(VOFStore)]
             # vtk["Vel"] = @views (VelocityStore[inside(VOFStore),1],VelocityStore[inside(VOFStore),2],VelocityStore[inside(VOFStore),3])
@@ -233,14 +237,16 @@ animZSlice = Animation()
     end
 
     if false
-        useNormConnect=false
-        useNormConnect && WaterLily.vof_reconstruct!(VOFStore,inteceStorage,normalStorage;perdir=(1,2,3),dirdir=(0,))
+        WaterLily.vof_reconstruct!(VOFStore,inteceStorage,normalStorage;perdir=(1,2,3),dirdir=(0,))
         WaterLily.InitilizeBubbleInfo!(bInfo)
-        WaterLily.ICCL_M!(bInfo,1 .- VOFStore,θs,normalStorage,useNormConnect=useNormConnect)
+        WaterLily.ICCL_M!(bInfo,1 .- VOFStore,θs,normalStorage,useNormConnect=false)
         bubbleR[iTime] = [bubble.r for (label,bubble) ∈ bInfo.bubbleDict]
     end
 
+    
+    obs[] = Insidef!(VOFStore,dat)
 
+    
     midSlice = N÷2+1
 
     # Plot X slice
@@ -248,12 +254,6 @@ animZSlice = Animation()
     Plots.contourf!(xedg,xedg,clamp.(VorticityStore[midSlice,2:end-1,2:end-1,1]',-10,10), aspect_ratio=:equal,color=:seismic,levels=60,xlimit=[-4,4],ylimit=[-4,4],linewidth=0,clim=(-10,10))
     Plots.contour!(xcen,xcen,VOFStore[midSlice,2:end-1,2:end-1]', aspect_ratio=:equal,color=:Black,levels=[0.5],xlimit=[-4,4],ylimit=[-4,4],linewidth=2)
     frame(animXSlice,Plots.plot!())
-
-    # Plot Y slice
-    Plots.plot()
-    Plots.contourf!(xcen,xedg,clamp.(VelocityStore[midSlice,2:end-1,2:end-1,3]',-0.5,1.5), aspect_ratio=:equal,color=:Spectral,levels=60,xlimit=[-4,4],ylimit=[-4,4],linewidth=0,clim=(-0.2,1.2))
-    Plots.contour!(xcen,xcen,VOFStore[midSlice,2:end-1,2:end-1]', aspect_ratio=:equal,color=:Black,levels=[0.5],xlimit=[-4,4],ylimit=[-4,4],linewidth=2)
-    frame(animYSlice,Plots.plot!())
 
     # Plot Z slice
     Plots.plot()
@@ -268,7 +268,6 @@ animZSlice = Animation()
     end
 end
 gif(animXSlice, computationID*"_"*"xSlice.gif", fps=frameRate)
-gif(animYSlice, computationID*"_"*"ySlice.gif", fps=frameRate)
 gif(animZSlice, computationID*"_"*"zSlice.gif", fps=frameRate)
 
 
