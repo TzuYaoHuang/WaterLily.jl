@@ -134,7 +134,8 @@ function proot(c0, c1, c2, c3)
 
     p0 = a1/3.0 - a2^2/9.0
     q0 = (a1*a2 - 3.0*a0)/6.0 - a2^3/27.0
-    t = acos(q0/sqrt(-p0^3))/3.0
+    a = q0/sqrt(-p0^3)
+    t = acos(abs2(a)<=1 ? a : 0)/3.0
 
     proot = sqrt(-p0)*(sqrt(3.0)*sin(t) - cos(t)) - a2/3.0
 
