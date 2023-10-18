@@ -471,8 +471,8 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
     a.u .= 0
     vof_smooth!(4, c.f⁰, c.fᶠ, c.α;perdir=c.perdir)
-    @inline ν(i,j,I) = calculateμ(i,j,I,c.f⁰,c.λμ,a.ν,c.boxIterator)
-    @inline ρ(i,I) = calculateρ(i,I,c.f⁰,c.λρ)
+    @inline ν(i,j,I) = calculateμ(i,j,I,c.fᶠ,c.λμ,a.ν,c.boxIterator)
+    @inline ρ(i,I) = calculateρ(i,I,c.fᶠ,c.λρ)
     conv_diff!(a.f,a.u⁰,a.σ,ν=ν,ρ=ρ, perdir=a.perdir,g=a.g)
     BDIM!(a); 
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
@@ -485,8 +485,8 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     advect!(a,c,c.f⁰,a.u⁰,a.u);
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
     vof_smooth!(4, c.f, c.fᶠ, c.α;perdir=c.perdir)
-    @inline ν_(i,j,I) = calculateμ(i,j,I,c.f,c.λμ,a.ν,c.boxIterator)
-    @inline ρ_(i,I) = calculateρ(i,I,c.f,c.λρ)
+    @inline ν_(i,j,I) = calculateμ(i,j,I,c.fᶠ,c.λμ,a.ν,c.boxIterator)
+    @inline ρ_(i,I) = calculateρ(i,I,c.fᶠ,c.λρ)
     conv_diff!(a.f,a.u,a.σ,ν=ν_,ρ=ρ_, perdir=a.perdir,g=a.g)
     BDIM!(a); a.u ./= 2;
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, f=2, perdir=a.perdir)
