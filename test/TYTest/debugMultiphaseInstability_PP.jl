@@ -114,10 +114,14 @@ end
 N = 128
 q = 1.0
 computationID = "3DNewVortexBreak"*string(N)
-N = 96
+N = 192
 q = 1.0
 disturb = 0.05
 computationID =  @sprintf("3DNewVortexBreak%d_q%.2f_dis%.2f",N,q,disturb)
+N = 128
+q = 1.0
+disturb = 0.05
+computationID =  @sprintf("3DHelicalModeVortexBreak%d_q%.2f_dis%.2f",N,q,disturb)
 println("You are now processing: "*computationID); flush(stdout)
 
 # READ the configuration
@@ -193,15 +197,12 @@ normalStorage = zeros((N+2,N+2,N+2,3))
 inteceStorage = zeros((N+2,N+2,N+2))
 
 # ANIMATION
-frameRate = 50
+frameRate = 10
 
 animXSlice = Animation()
 animZSlice = Animation()
-dat = VOFStore[inside(VOFStore)] |> Array;
-obs = Insidef!(VOFStore,dat) |> Observable;
-fig, ax, lineplot = GLMakie.contour(obs,levels=[0.5],alpha=1,isorange=0.3)
 
-@time record(fig, computationID*"_"*"fIso.mp4", 1:NTime; framerate=frameRate) do iTime
+@time for iTime ∈ 1:NTime
     # Read in the file
     JLDFile = jldopen("JLD2/"*computationID*"VelVOF_"*string(iTime-1)*".jld2")
     VelocityStore .= JLDFile["u"]; VelocityStore ./= UScale
@@ -214,11 +215,12 @@ fig, ax, lineplot = GLMakie.contour(obs,levels=[0.5],alpha=1,isorange=0.3)
     avgDiv[iTime] = CalculateMeanScalar(DivergenceStore,func=abs,R=insidef)
     ke[iTime,:] = KE(VelocityStore,VOFStore,λρ)
     ωe[iTime,:] = KE(VorticityStore,VOFStore,λρ)
-    for I ∈ inside(λ2Store)
-        λ2Store[I] = WaterLily.λ₂(I,VelocityStore)*LScale^2
-    end
+    
 
-    if true
+    if false
+        for I ∈ inside(λ2Store)
+            λ2Store[I] = WaterLily.λ₂(I,VelocityStore)*LScale^2
+        end
         vtk_grid("VTK/"*computationID*"VelVOF_"*string(iTime-1), xcen, xcen, xcen) do vtk
             vtk["VOF"] = @views VOFStore[inside(VOFStore)]
             # vtk["Vel"] = @views (VelocityStore[inside(VOFStore),1],VelocityStore[inside(VOFStore),2],VelocityStore[inside(VOFStore),3])
@@ -237,15 +239,12 @@ fig, ax, lineplot = GLMakie.contour(obs,levels=[0.5],alpha=1,isorange=0.3)
     end
 
     if false
-        WaterLily.vof_reconstruct!(VOFStore,inteceStorage,normalStorage;perdir=(1,2,3),dirdir=(0,))
+        useNormConnect=false
+        useNormConnect && WaterLily.vof_reconstruct!(VOFStore,inteceStorage,normalStorage;perdir=(1,2,3),dirdir=(0,))
         WaterLily.InitilizeBubbleInfo!(bInfo)
-        WaterLily.ICCL_M!(bInfo,1 .- VOFStore,θs,normalStorage,useNormConnect=false)
+        WaterLily.ICCL_M!(bInfo,1 .- VOFStore,θs,normalStorage,useNormConnect=useNormConnect)
         bubbleR[iTime] = [bubble.r for (label,bubble) ∈ bInfo.bubbleDict]
     end
-
-    
-    obs[] = Insidef!(VOFStore,dat)
-
     
     midSlice = N÷2+1
 
@@ -347,8 +346,9 @@ gif(aMeanUAzi,computationID*"_meanUAzi.gif", fps=frameRate)
 aBubbleDistribution = Animation() 
 for iTime ∈ 1:NTime
     Plots.plot()
-    Plots.histogram!(log10.(bubbleR[iTime]),bins=-4.4:0.1:2.0,color=:gray)
-    Plots.plot!(ylimit=(0,300))
-    frame(aBubbleDistribution,Plots.plot!())
+    Plots.histogram!(log10.(bubbleR[iTime]/LScale),bins=-4.4:0.1:2.0,color=:gray)
+    Plots.vline!([log10(1/LScale)],color=:blue,linewidth=2,linestyle=:dash,label=false)
+    Plots.plot!(ylimit=(0,400))
+    frame(aBubbleDistribution,Plots.plot!(legend=false))
 end
 gif(aBubbleDistribution,computationID*"_bubbleDistri.gif",fps=frameRate)
