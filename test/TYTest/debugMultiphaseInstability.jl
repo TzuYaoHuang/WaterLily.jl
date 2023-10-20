@@ -21,9 +21,9 @@ Return a CartesianIndex of dimension `N` which is one at index `i` and zero else
 δ(i,I::CartesianIndex{N}) where N = δ(i, Val{N}())
 
 # CASE configuration
-N = 192
+N = 96
 q = 1.0
-disturb = 0.02
+disturb = 0.05
 computationID =  @sprintf("3DNewVortexBreak%d_q%.2f_dis%.2f",N,q,disturb)
 println("You are now running: "*computationID); flush(stdout)
 
@@ -117,7 +117,7 @@ function multiphaseQVortex(NN; Re=4000, T=Float32, mem=Array)
 end
 
 dur = 200
-stp = 0.05
+stp = 0.1
 
 sim = multiphaseQVortex(N)
 
