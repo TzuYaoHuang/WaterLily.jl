@@ -144,7 +144,7 @@ function sim_gif!(sim;duration=1,step=0.1,verbose=true,R=inside(sim.flow.p),
         push!(trueTime,WaterLily.time(sim))
         ke = cat(ke,KE(sim.flow.u,sim.inter.f,sim.inter.λρ),dims=2)
         pe = cat(pe,PE(sim.inter.f,sim.inter.λρ,grav,2),dims=2)
-        Plots.contourf(lx,ly,clamp.(sim.flow.p[2:end-1,2:end-1]'/sim.U^2*2,0,1), aspect_ratio=:equal,color=:dense,levels=60,xlimit=[0,1],ylimit=[0,1],linewidth=0,clim=(0,1))
+        Plots.contourf(lx,ly,clamp.(sim.flow.p[2:end-1,2:end-1]'/sim.U^2*2,0,1), aspect_ratio=:equal,color=:roma,levels=60,xlimit=[0,1],ylimit=[0,1],linewidth=0,clim=(0,1))
         Plots.contour!(lx,ly,sim.inter.f[2:end-1,2:end-1]', aspect_ratio=:equal,color=:Black,levels=[0.5],xlimit=[0,1],ylimit=[0,1],linewidth=2)
         plotbody && body_plot!(sim)
         verbose && @printf("tU/L=%6.3f, ΔtU/L=%.8f\n",trueTime[end]*sim.U/sim.L,sim.flow.Δt[end]*sim.U/sim.L)
@@ -173,7 +173,7 @@ function damBreak(NN;Re=493.954,g=grav)
         end
     end
 
-    return WaterLily.TwoPhaseSimulation(LDomain, (0,0), LScale;U=UScale, Δt=0.01,grav=(0,-g), ν=ν, InterfaceSDF=interSDF, T=Float64,λμ=1e-3,λρ=1e-3)
+    return WaterLily.TwoPhaseSimulation(LDomain, (0,0), LScale;U=UScale, Δt=0.01,grav=(0,-g), ν=ν, InterfaceSDF=interSDF, T=Float64,λμ=1e-2,λρ=1e-3)
 end
 
 
@@ -218,6 +218,10 @@ aa = cumsum(sim.flow.Δt)[1:end-1]*sim.U/sim.L
 
 Plots.plot(aa,sim.pois.res0[1:2:end],yscale=:log10,label="First Stage")
 Plots.plot!(aa,sim.pois.res0[2:2:end],yscale=:log10,label="Second Stage",legend=:bottomleft)
+Plots.savefig(computationID*"_PoisRes0.png")
+
+Plots.plot(aa,sim.pois.res[1:2:end],yscale=:log10,label="First Stage")
+Plots.plot!(aa,sim.pois.res[2:2:end],yscale=:log10,label="Second Stage",legend=:bottomleft)
 Plots.savefig(computationID*"_PoisRes.png")
 
 Plots.plot(aa,sim.pois.n[1:2:end],label="First Stage")

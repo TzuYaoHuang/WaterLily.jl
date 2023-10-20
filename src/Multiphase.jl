@@ -65,13 +65,6 @@ function BCVOF!(f,α,n̂;perdir=(0,),dirdir=(0,))
         else
             @loop f[I] = f[I+δ(j,I)] over I ∈ slice(N,1,j)
             @loop f[I] = f[I-δ(j,I)] over I ∈ slice(N,N[j],j)
-            for i ∈ 1:n
-                mulp = ifelse(i==j, -1, 1)
-                @loop n̂[I,i] = mulp*n̂[I+δ(j,I),i] over I ∈ slice(N,1,j)
-                @loop n̂[I,i] = mulp*n̂[I-δ(j,I),i] over I ∈ slice(N,N[j],j)
-            end
-            @loop α[I] = vof_int((@view n̂[I,:]),f[I]) over I ∈ slice(N,1,j)
-            @loop α[I] = vof_int((@view n̂[I,:]),f[I]) over I ∈ slice(N,N[j],j)
         end
     end
 end
@@ -87,17 +80,17 @@ f: befor smooth
 sf: after smooth
 """
 function vof_smooth!(itm, f::AbstractArray{T,d}, sf::AbstractArray{T,d}, rf::AbstractArray{T,d};perdir=(0,)) where {T,d}
-    N = size(f)
-    rf .= f
+    (itm!=0)&&(rf .= f)
     for it ∈ 1:itm
-        sf .= 0.0
+        sf .= 0
         for j ∈ 1:d
             @loop sf[I] += rf[I+δ(j, I)] + rf[I-δ(j, I)] + 2*rf[I] over I ∈ inside(rf)
         end
         BCPerNeu!(sf,perdir=perdir)
-        sf ./= 12
+        sf ./= 4*d
         rf .= sf
     end
+    (itm==0)&&(sf .= f)
 end
 
 """
@@ -250,7 +243,7 @@ function vof_reconstruct!(f,α,n̂;perdir=(0,),dirdir=(0,))
 end
 function vof_reconstruct!(f::AbstractArray{T,n},α::AbstractArray{T,n},n̂::AbstractArray{T,nv},N,I;perdir=(0,),dirdir=(0,)) where {T,n,nv}
     fc = f[I]
-    nhat = @view n̂[I,:] #nzeros(T,n)
+    nhat = @views n̂[I,:] #nzeros(T,n)
     if (fc==0.0 || fc==1.0)
         f[I] = fc
         for i∈1:n n̂[I,i] = 0 end
@@ -314,7 +307,7 @@ function vof_flux!(fᶠ::AbstractArray{T,n},d,fIn::AbstractArray{T,n},α::Abstra
     else
         if (dl > 0.0) ICell -= δ(d,IFace) end
         f = fIn[ICell]
-        nhat = @view n̂[ICell,:]
+        nhat = @views n̂[ICell,:]
         if (sum(abs,nhat)==0.0 || f == 0.0 || f == 1.0)
             flux = f*dl
         else
@@ -465,12 +458,13 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
 """
 @fastmath function mom_step!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody)
     a.u⁰ .= a.u;
+    smoothStep = 4
 
     # predictor u → u'
     advect!(a,c,c.f,a.u⁰,a.u);
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
     a.u .= 0
-    vof_smooth!(4, c.f⁰, c.fᶠ, c.α;perdir=c.perdir)
+    vof_smooth!(smoothStep, c.f⁰, c.fᶠ, c.α;perdir=c.perdir)
     @inline ν(i,j,I) = calculateμ(i,j,I,c.fᶠ,c.λμ,a.ν,c.boxIterator)
     @inline ρ(i,I) = calculateρ(i,I,c.fᶠ,c.λρ)
     conv_diff!(a.f,a.u⁰,a.σ,ν=ν,ρ=ρ, perdir=a.perdir,g=a.g)
@@ -484,7 +478,7 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     # corrector u → u¹
     advect!(a,c,c.f⁰,a.u⁰,a.u);
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
-    vof_smooth!(4, c.f, c.fᶠ, c.α;perdir=c.perdir)
+    vof_smooth!(smoothStep, c.f, c.fᶠ, c.α;perdir=c.perdir)
     @inline ν_(i,j,I) = calculateμ(i,j,I,c.fᶠ,c.λμ,a.ν,c.boxIterator)
     @inline ρ_(i,I) = calculateρ(i,I,c.fᶠ,c.λρ)
     conv_diff!(a.f,a.u,a.σ,ν=ν_,ρ=ρ_, perdir=a.perdir,g=a.g)
