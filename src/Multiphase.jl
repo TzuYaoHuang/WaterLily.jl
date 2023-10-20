@@ -502,10 +502,10 @@ end
 
 function CFL(a::Flow,c::cVOF)
     @inside a.σ[I] = flux_out(I,a.u)
-    fluxLimit = inv(maximum(a.σ)+5*a.ν*max(1,c.λμ/c.λρ))
+    fluxLimit = inv(maximum(@views a.σ[inside(a.σ)])+5*a.ν*max(1,c.λμ/c.λρ))
     @inside a.σ[I] = MaxTotalflux(I,a.u)
-    cVOFLimit = 0.5*inv(maximum(a.σ))
-    min(10.,fluxLimit,cVOFLimit)
+    cVOFLimit = 0.5*inv(maximum(@views a.σ[inside(a.σ)]))
+    0.5min(10.,fluxLimit,cVOFLimit)
 end
 
 @inline calculateρ(d,I,f,λ) = (ϕ(d,I,f)*(1-λ) + λ)
