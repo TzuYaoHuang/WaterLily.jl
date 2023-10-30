@@ -124,7 +124,7 @@ function InformedCCL!(bInfo,v,θ,n̂,I;useNormConnect=true)
     end
 end
 
-function CalculateBubbleInfo!(bInfo::BubblesInfo,v)
+function CalculateBubbleInfo!(bInfo::BubblesInfo,v::AbstractArray{T,D}) where {T,D}
     for (label,bubble) ∈ bInfo.bubbleDict
         vol = 0
         cen = zeros(length(bubble.CIs[1]))
@@ -134,7 +134,7 @@ function CalculateBubbleInfo!(bInfo::BubblesInfo,v)
         end
         cen ./= vol
         bubble.vol = vol
-        bubble.r = (3/4*vol/π)^(1/3)
+        bubble.r = D==3 ? (3/4*vol/π)^(1/3) : (vol/π)^(1/2)
         bubble.cen = cen
     end
 end
