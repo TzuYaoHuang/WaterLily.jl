@@ -108,8 +108,11 @@ function sim_gif!(sim;duration=1,step=0.1,verbose=true,R=inside(sim.flow.p),
     mass = [Statistics.mean(sim.inter.f[R])]
     maxU = [maximum(sqrt.(Statistics.sum(sim.flow.u.^2,dims=3)))]
     trueTime = [WaterLily.time(sim)]
+    ii = 0
     @time anim = @animate for tᵢ in range(t₀,t₀+duration;step)
     # @time for tᵢ in range(t₀,t₀+duration;step)
+        # (ii%2 == 1) && WaterLily.SmoothVelocity!(sim.flow,sim.pois,sim.inter,sim.body)
+        ii+=1
         WaterLily.sim_step!(sim,tᵢ;remeasure)
         for I∈inside(sim.flow.σ)
             sim.flow.σ[I] = WaterLily.div(I,sim.flow.u)
@@ -118,14 +121,15 @@ function sim_gif!(sim;duration=1,step=0.1,verbose=true,R=inside(sim.flow.p),
         push!(mass,Statistics.mean(sim.inter.f[R]))
         push!(maxU,maximum(sqrt.(Statistics.sum(sim.flow.u.^2,dims=3))))
         push!(trueTime,WaterLily.time(sim))
-        ke = cat(ke,KE(sim.flow.u,sim.inter.f,sim.inter.λρ),dims=2)
-        pe = cat(pe,PE(sim.inter.f,sim.inter.λρ,grav,2),dims=2)
+        ke = cat(ke,KE(sim.flow.u,sim.inter.fᶠ,sim.inter.λρ),dims=2)
+        pe = cat(pe,PE(sim.inter.fᶠ,sim.inter.λρ,grav,2),dims=2)
         for I∈inside(sim.flow.σ)
             sim.flow.σ[I] = WaterLily.curl(3,I,sim.flow.u)*sim.L/sim.U
         end
         Plots.plot()
         Plots.contourf(lx,ly,clamp.(sim.flow.p[2:end-1,2:end-1]'/(grav*sim.L),-1,1), aspect_ratio=:equal,color=:seismic,levels=60,xlimit=[0,1],ylimit=[0,1],linewidth=0,clim=(-1,1))
-        # Plots.contourf(lx.-0.5/N,ly.-0.5/N,clamp.(sim.flow.σ[2:end-1,2:end-1]',-50,50), aspect_ratio=:equal,color=:seismic,levels=60,xlimit=[0,1],ylimit=[0,1],linewidth=0,clim=(-50,50))
+        # Plots.contourf(lx,ly,clamp.(sim.flow.p[2:end-1,2:end-1]'/(sim.U),-2,2), aspect_ratio=:equal,color=:seismic,levels=60,xlimit=[0,1],ylimit=[0,1],linewidth=0,clim=(-1,1))
+        Plots.contourf(lx.-0.5/N,ly.-0.5/N,clamp.(sim.flow.σ[2:end-1,2:end-1]',-50,50), aspect_ratio=:equal,color=:seismic,levels=60,xlimit=[0,1],ylimit=[0,1],linewidth=0,clim=(-50,50))
         Plots.contour!(lx,ly,sim.inter.f[2:end-1,2:end-1]', aspect_ratio=:equal,color=:Black,levels=[0.5],xlimit=[0,1],ylimit=[0,1],linewidth=2)
         plotbody && body_plot!(sim)
         verbose && println("tU/L=",round(tᵢ,digits=4),

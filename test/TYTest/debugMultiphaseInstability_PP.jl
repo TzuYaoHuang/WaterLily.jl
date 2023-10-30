@@ -7,11 +7,17 @@ WaterLily = Main.WaterLily;
 using Printf
 using JLD2
 using Plots
+using Plots.PlotMeasures
 using Statistics
 using StatsBase
 using WriteVTK
-using GLMakie
-GLMakie.activate!()
+using StaticArrays
+using LaTeXStrings
+
+default()
+Plots.scalefontsizes()
+default(fontfamily="Palatino",linewidth=2, framestyle=:axes, label=nothing, grid=false, tick_dir=:out, size=(900,700),right_margin=5mm,left_margin=5mm,top_margin=5mm,bottom_margin=5mm)
+Plots.scalefontsizes(2.1)
 
 # DEFINE some useful functions
 animAlpha(i,numFiles;y0 = 0.01) = 4*(1-y0)*(i/numFiles-0.5)^3 + (1+y0)/2
@@ -44,23 +50,48 @@ function CalculateMeanScalar(f;func=(x)->x,R=inside(f))
     return s/count
 end
 
-function KE(u,f,λρ)
-    N,n = WaterLily.size_u(u)
-    ke = zeros(eltype(f),2)
+function keI(I::CartesianIndex{n},u::AbstractArray{T}) where {n,T}
+    ke = zero(eltype(u))
     for i∈1:n
-        for I ∈ WaterLily.inside_uWB(N,i)
-            buf = u[I,i]^2
-            fWater = WaterLily.ϕ(i,I,f)
-            if (I[i] == 2) || (I[i] == N[i])
-                ke[1] += 1*fWater*buf*0.5
-                ke[2] += λρ*(1-fWater)*buf*0.5
-            else
-                ke[1] += 1*fWater*buf
-                ke[2] += λρ*(1-fWater)*buf
-            end
+        ke += (u[I,i]^2+u[I+δ(i,I),i]^2)/2
+    end
+    return 0.5ke
+end
+
+function ωeI(I::CartesianIndex{n},ω::AbstractArray{T}) where {n,T}
+    ωe = zero(eltype(ω))
+    for i∈1:n
+        for II ∈ I:(I+oneunit(I)-δ(i,I))
+            ωe += ω[II,i]^2/4
         end
     end
-    return ke/2
+    return 0.5ωe
+end
+
+function SeI(I::CartesianIndex{n},u::AbstractArray{T}) where {n,T}
+    J = @SMatrix [WaterLily.∂(i,j,I,u) for i ∈ 1:3, j ∈ 1:3]
+    S = 0.5(J+J')
+    return sum(S.^2)
+end
+
+
+function ρE(fun,u,f,λρ)
+    ρe = zeros(eltype(f),2)
+    for I ∈ inside(f)
+        buf = fun(I,u)
+        fWater = f[I]
+        ρe[1] += 1*fWater*buf
+        ρe[2] += λρ*(1-fWater)*buf
+    end
+    return ρe
+end
+
+function E(fun,u,f,λρ)
+    e = zero(eltype(f))
+    for I ∈ inside(f)
+        e += fun(I,u)
+    end
+    return e
 end
 
 function ComputeVorticity!(vortVec, u, R)
@@ -113,15 +144,9 @@ end
 # CASE configuration
 N = 128
 q = 1.0
-computationID = "3DNewVortexBreak"*string(N)
-N = 192
-q = 1.0
-disturb = 0.05
-computationID =  @sprintf("3DNewVortexBreak%d_q%.2f_dis%.2f",N,q,disturb)
-N = 128
-q = 1.0
-disturb = 0.05
-computationID =  @sprintf("3DHelicalModeVortexBreak%d_q%.2f_dis%.2f",N,q,disturb)
+m = 0
+disturb = 0.1
+computationID =  @sprintf("3DNoAxialm%dVortexBreak%d_q%.2f_dis%.2f",m,N,q,disturb)
 println("You are now processing: "*computationID); flush(stdout)
 
 # READ the configuration
@@ -129,6 +154,7 @@ JLDFile = jldopen("JLD2/"*computationID*"General.jld2")
 
 UScale = JLDFile["U"]
 LScale = JLDFile["L"]
+LDomain = N
 try
     global λρ = JLDFile["rhoRatio"]; global λμ = JLDFile["visRatio"]
 catch err
@@ -136,7 +162,9 @@ catch err
 end
 
 trueTime = JLDFile["trueTime"]; trueTime .*= UScale/LScale
+timeLimit = [minimum(trueTime),maximum(trueTime)]
 dtTrueTime = trueTime[2:end] .- trueTime[1:end-1]
+clamp!(dtTrueTime,1e-8,Inf)
 dts = JLDFile["dts"]; dts .*= UScale/LScale
 
 resIni = JLDFile["resIni"]
@@ -147,9 +175,9 @@ close(JLDFile)
 
 # DERIVED configuration
 NTime = length(trueTime)
-ReportFreq = NTime÷50
-xcen = ((1:N).-0.5.-N/2)/LScale
-xedg = ((1:N).-1.0.-N/2)/LScale
+ReportFreq = max(NTime÷50,1)
+xcen = ((0:N+1).-0.5.-N/2)/LScale
+xedg = ((0:N+1).-1.0.-N/2)/LScale
 
 # DECLARE necessary variables
 # storage
@@ -182,7 +210,8 @@ insidef = inside(VOFStore)
 avgVOF = zeros(NTime)
 avgDiv = zeros(NTime)
 ke = zeros(NTime,2)
-ωe = zeros(NTime,2)
+ωe = zeros(NTime)
+Se = zeros(NTime)
 uMeanRadialList = zeros(NTime,cylGridSize[1])
 uMeanAzimuthalList = zeros(NTime,cylGridSize[1])
 uMeanAxialList = zeros(NTime,cylGridSize[1])
@@ -197,7 +226,7 @@ normalStorage = zeros((N+2,N+2,N+2,3))
 inteceStorage = zeros((N+2,N+2,N+2))
 
 # ANIMATION
-frameRate = 10
+frameRate = 40
 
 animXSlice = Animation()
 animZSlice = Animation()
@@ -206,22 +235,24 @@ animZSlice = Animation()
     # Read in the file
     JLDFile = jldopen("JLD2/"*computationID*"VelVOF_"*string(iTime-1)*".jld2")
     VelocityStore .= JLDFile["u"]; VelocityStore ./= UScale
-    VOFStore .= JLDFile["f"]
+    λ2Store .= JLDFile["f"]
+    WaterLily.vof_smooth!(2,λ2Store,VOFStore,DivergenceStore,perdir=(1,2,3))
 
     # Post-process the data
     CalculateDivergence!(DivergenceStore,VelocityStore,insidef)
     ComputeVorticity!(VorticityStore, VelocityStore, insidef); VorticityStore .*= LScale
     avgVOF[iTime] = CalculateMeanScalar(VOFStore,R=insidef)
     avgDiv[iTime] = CalculateMeanScalar(DivergenceStore,func=abs,R=insidef)
-    ke[iTime,:] = KE(VelocityStore,VOFStore,λρ)
-    ωe[iTime,:] = KE(VorticityStore,VOFStore,λρ)
+    ke[iTime,:] = ρE(keI,VelocityStore,VOFStore,λρ)
+    ωe[iTime] =  E(ωeI,VorticityStore,VOFStore,λρ)
+    Se[iTime] =  E(SeI,VelocityStore,VOFStore,λρ)
     
 
     if false
         for I ∈ inside(λ2Store)
             λ2Store[I] = WaterLily.λ₂(I,VelocityStore)*LScale^2
         end
-        vtk_grid("VTK/"*computationID*"VelVOF_"*string(iTime-1), xcen, xcen, xcen) do vtk
+        vtk_grid("VTK/"*computationID*"VelVOF_"*string(iTime-1), xcen[2:end-1], xcen[2:end-1], xcen[2:end-1]) do vtk
             vtk["VOF"] = @views VOFStore[inside(VOFStore)]
             # vtk["Vel"] = @views (VelocityStore[inside(VOFStore),1],VelocityStore[inside(VOFStore),2],VelocityStore[inside(VOFStore),3])
             vtk["l2"] = @views λ2Store[inside(λ2Store)]
@@ -249,15 +280,17 @@ animZSlice = Animation()
     midSlice = N÷2+1
 
     # Plot X slice
-    Plots.plot()
-    Plots.contourf!(xedg,xedg,clamp.(VorticityStore[midSlice,2:end-1,2:end-1,1]',-10,10), aspect_ratio=:equal,color=:seismic,levels=60,xlimit=[-4,4],ylimit=[-4,4],linewidth=0,clim=(-10,10))
-    Plots.contour!(xcen,xcen,VOFStore[midSlice,2:end-1,2:end-1]', aspect_ratio=:equal,color=:Black,levels=[0.5],xlimit=[-4,4],ylimit=[-4,4],linewidth=2)
+    Plots.plot(size=(800,700))
+    Plots.contourf!(xedg,xedg,clamp.(VorticityStore[midSlice,:,:,1]',-10,10), aspect_ratio=:equal,color=:seismic,levels=60,xlimit=[-4,4],ylimit=[-4,4],linewidth=0,clim=(-10,10))
+    Plots.contour!(xcen,xcen,VOFStore[midSlice,:,:]', aspect_ratio=:equal,color=:Black,levels=[0.5],xlimit=[-4,4],ylimit=[-4,4],linewidth=2)
+    Plots.plot!(xlabel=L"y/d_\mathrm{v}",ylabel=L"z/d_\mathrm{v}",colorbar_title=L"\omega_x d_\mathrm{v}/U")
     frame(animXSlice,Plots.plot!())
 
     # Plot Z slice
-    Plots.plot()
-    Plots.contourf!(xedg,xedg,clamp.(VorticityStore[2:end-1,2:end-1,midSlice,3]',-10,10), aspect_ratio=:equal,color=:seismic,levels=60,xlimit=[-4,4],ylimit=[-4,4],linewidth=0,clim=(-10,10))
-    Plots.contour!(xcen,xcen,VOFStore[2:end-1,2:end-1,midSlice]', aspect_ratio=:equal,color=:Black,levels=[0.5],xlimit=[-4,4],ylimit=[-4,4],linewidth=2)
+    Plots.plot(size=(800,700))
+    Plots.contourf!(xedg,xedg,clamp.(VorticityStore[:,:,midSlice,3]',-10,10), aspect_ratio=:equal,color=:seismic,levels=60,xlimit=[-4,4],ylimit=[-4,4],linewidth=0,clim=(-10,10))
+    Plots.contour!(xcen,xcen,VOFStore[:,:,midSlice]', aspect_ratio=:equal,color=:Black,levels=[0.5],xlimit=[-4,4],ylimit=[-4,4],linewidth=2)
+    Plots.plot!(xlabel=L"x/d_\mathrm{v}",ylabel=L"y/d_\mathrm{v}",colorbar_title=L"\omega_z d_\mathrm{v}/U")
     frame(animZSlice,Plots.plot!())
 
     close(JLDFile)
@@ -273,46 +306,63 @@ gif(animZSlice, computationID*"_"*"zSlice.gif", fps=frameRate)
 # GLOBAL Plot
 allTime = cumsum(dts)[1:end-1]
 midTrueTime = (trueTime[2:end]+trueTime[1:end-1])/2
-ke ./= LScale^3
-ωe ./= LScale^3
+ke ./= LDomain^3
+ωe ./= LDomain^3
+Se ./= LDomain^3/LScale^2
 keT = ke[:,1] .+ ke[:,2]
-ωeT = ωe[:,1] .+ ωe[:,2]
+ωeT = ωe#[:,1] .+ ωe[:,2]
+SeT = Se#[:,1] .+ Se[:,2]
 dωeTdt = (ωeT[2:end]-ωeT[1:end-1])./dtTrueTime; dωeTdt[1] = dωeTdt[2]
 dkeTdt = (keT[2:end]-keT[1:end-1])./dtTrueTime; dkeTdt[1] = dkeTdt[2]
+dSeTdt = (SeT[2:end]-SeT[1:end-1])./dtTrueTime; dSeTdt[1] = dSeTdt[2]
 ωeTMid = (ωeT[2:end]+ωeT[1:end-1])/2
-effectiveRe = -2*ωeTMid./dkeTdt
+SeTMid = (SeT[2:end]+SeT[1:end-1])/2
+effectiveRe = -ωeTMid./dkeTdt
+effectiveReS = -SeTMid./dkeTdt
 quantileRe = quantile(effectiveRe)
+quantileReS = quantile(effectiveReS)
 RelVOF = abs.((avgVOF.-avgVOF[1])/avgVOF[1]).+1e-20
 
 # Divergence and mass conservation
 Plots.plot()
 Plots.plot!(trueTime,avgDiv.+1e-20,label="Velocity Divergence" ,color=:red)
 Plots.plot!(trueTime,RelVOF,label="Mass loss",color=:blue)
-Plots.plot!(ylimit=[1e-10,1],yaxis=:log10)
+Plots.plot!(xlimit=timeLimit, ylimit=[1e-10,1],yaxis=:log10)
+Plots.plot!(xlabel=L"tU/d_\mathrm{v}")
 Plots.savefig(computationID*"_MassDivergence.png")
 
 # Energy
 Plots.plot()
-Plots.plot!(trueTime,keT,label="K.E. All",color=:black,linestyle=:solid)
-# Plots.plot!(trueTime,ke[:,1],label="K.E. Water",color=:blue,linestyle=:dot)
-# Plots.plot!(trueTime,ke[:,2],label="K.E. Air",color=:green,linestyle=:dash)
+Plots.plot!(trueTime,keT,color=:black,linestyle=:solid)
+Plots.plot!(xlimit=timeLimit,xlabel=L"tU/d_\mathrm{v}",ylabel=L"\textrm{Normalized Energy } (E)")
 Plots.savefig(computationID*"_Energy.png")
 
 # Enstrophy
 Plots.plot()
 Plots.plot!(trueTime,ωeT,legend=false,color=:black,linestyle=:solid)
+Plots.plot!(xlimit=timeLimit,xlabel=L"tU/d_\mathrm{v}",ylabel=L"\textrm{Normalized Enstrophy } (\mathcal{E})")
 Plots.savefig(computationID*"_Enstrophy.png")
 
 Plots.plot()
 Plots.plot!(midTrueTime,dωeTdt,legend=false,color=:black,linestyle=:solid)
+Plots.plot!(xlimit=timeLimit,xlabel=L"tU/d_\mathrm{v}",ylabel=L"\mathrm{d} \mathcal{E}/\mathrm{d} t")
 Plots.savefig(computationID*"_DiffEnstrophy.png")
 
 Plots.plot()
 Plots.plot!(midTrueTime,effectiveRe,color=:black,linestyle=:solid)
 Plots.hline!(quantileRe[3:4],color=:blue,linestyle=:dash)
 Plots.hline!(quantileRe[2:2],color=:deepskyblue4,linestyle=:dash)
-Plots.plot!(title=@sprintf("Median Re: %.2f, 3rd quantile Re: %.2f", quantileRe[3], quantileRe[4]),legend=false)
+Plots.plot!(title=@sprintf("Median Re: %.2f, 3rd quantile Re: %.2f", quantileRe[3], quantileRe[4]),titlefontsize=24,legend=false, ylimit=(0,5000))
+Plots.plot!(xlimit=timeLimit,xlabel=L"tU/d_\mathrm{v}",ylabel=L"Ud_\mathrm{v}/\nu_\mathrm{eff}")
 Plots.savefig(computationID*"_EffectiveRe.png")
+
+Plots.plot()
+Plots.plot!(midTrueTime,effectiveReS,color=:black,linestyle=:solid)
+Plots.hline!(quantileReS[3:4],color=:blue,linestyle=:dash)
+Plots.hline!(quantileReS[2:2],color=:deepskyblue4,linestyle=:dash)
+Plots.plot!(title=@sprintf("Median Re: %.2f, 3rd quantile Re: %.2f", quantileReS[3], quantileReS[4]),titlefontsize=24,legend=false, ylimit=(0,5000))
+Plots.plot!(xlimit=timeLimit,xlabel=L"tU/d_\mathrm{v}",ylabel=L"Ud_\mathrm{v}/\nu_\mathrm{eff}")
+Plots.savefig(computationID*"_EffectiveReS.png")
 
 # Check Poisson solver
 Plots.plot()
@@ -346,7 +396,7 @@ gif(aMeanUAzi,computationID*"_meanUAzi.gif", fps=frameRate)
 aBubbleDistribution = Animation() 
 for iTime ∈ 1:NTime
     Plots.plot()
-    Plots.histogram!(log10.(bubbleR[iTime]/LScale),bins=-4.4:0.1:2.0,color=:gray)
+    Plots.histogram!(log10.(bubbleR[iTime]/LScale),bins=-6.9:0.1:0.5,color=:gray)
     Plots.vline!([log10(1/LScale)],color=:blue,linewidth=2,linestyle=:dash,label=false)
     Plots.plot!(ylimit=(0,400))
     frame(aBubbleDistribution,Plots.plot!(legend=false))
