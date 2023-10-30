@@ -88,7 +88,7 @@ struct TwoPhaseSimulation <: AbstractSimulation
         flow = Flow(dims,u_BC;uλ,Δt,ν,T,f=mem,perdir=perdir,g=grav)
         inter= cVOF(dims,flow.f,flow.σ; arr=mem, InterfaceSDF=InterfaceSDF, T=T, perdir=flow.perdir, dirdir=dirdir,λμ=λμ,λρ=λρ)
         measure!(flow,body;ϵ,perdir=perdir)
-        calculateL!(flow,inter)
+        # calculateL!(flow,inter)
         new(U,L,ϵ,flow,inter,body,MultiLevelPoisson(flow.p,flow.μ₀,flow.σ;perdir=perdir))
     end
 end

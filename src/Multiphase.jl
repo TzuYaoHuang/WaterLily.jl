@@ -1,4 +1,7 @@
 using ForwardDiff
+using Printf
+
+boxAroundI(I::CartesianIndex) = (I-oneunit(I)):(I+oneunit(I))
 
 struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
     f⁰:: Sf  # cell-averaged color function, because Heun Correction step
@@ -11,7 +14,6 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
     dirdir :: NTuple  # Dirichlet directions
     λμ:: T   # ratio of dynamic viscosity
     λρ:: T   # ratio of density
-    boxIterator::Base.Iterators.ProductIterator
     function cVOF(N::NTuple{D}, n̂place, αplace; arr=Array, InterfaceSDF::Function=(x) -> 5-x[1], T=Float64, perdir=(0,), dirdir=(0,),λμ=0.0180989244,λρ=0.001206) where D
         Ng = N .+ 2
         f = ones(T, Ng) |> arr
@@ -22,8 +24,7 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
         BCVOF!(f,α,n̂;perdir=perdir,dirdir=dirdir)
         f⁰ = copy(f)
         vof_smooth!(4, f, fᶠ, α;perdir=perdir)
-        it = Iterators.product([[0,1] for ii ∈ 1:D]...)
-        new{D,T,typeof(f),typeof(n̂)}(f⁰,f,fᶠ,n̂,α,c̄,perdir,dirdir,λμ,λρ,it)
+        new{D,T,typeof(f),typeof(n̂)}(f⁰,f,fᶠ,n̂,α,c̄,perdir,dirdir,λμ,λρ)
     end
 end
 
@@ -33,17 +34,21 @@ end
 Given a distance function (FreeSurfsdf) for the initial free-surface, yield the volume fraction (f), intercept (α), normal (n̂)
 """
 function applyVOF!(f,α,n̂,FreeSurfsdf)
+    tol = 10eps(eltype(f))
     N,n = size_u(n̂)
     @loop applyVOF!(f,α,n̂,FreeSurfsdf,n,I) over I ∈ inside(f)
+    f[f.<=tol] .= 0.0
+    f[f.>=1.0-tol] .= 1.0
 end
 function applyVOF!(f,α,n̂,FreeSurfsdf,n,I)
-    α[I] = FreeSurfsdf(loc(I));
-    if abs2(α[I])>n 
+    α[I] = FreeSurfsdf(loc(0,I));
+    if abs2(α[I])>n/4 
         f[I] = ifelse(α[I]>0,0,1)
     else
-        nhat = ForwardDiff.gradient(FreeSurfsdf,(loc(0,I)+loc(I))*0.5);
-        nhat /= sqrt(sum(nhat.^2));
-        f[I] = vof_vol(nhat,-α[I]);
+        # nhat = ForwardDiff.gradient(FreeSurfsdf,loc(0,I));
+        # nhat /= sqrt(sum(nhat.^2));
+        # f[I] = vof_vol(nhat,-α[I]);
+        f[I] = (√n/2 - α[I])/(√n)
     end
 end
 
@@ -91,6 +96,61 @@ function vof_smooth!(itm, f::AbstractArray{T,d}, sf::AbstractArray{T,d}, rf::Abs
         rf .= sf
     end
     (itm==0)&&(sf .= f)
+end
+
+function SmoothVelocity!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody)
+    oldp = copy(a.p)
+    vof_smooth!(2, c.f, c.fᶠ, c.α;perdir=c.perdir)
+    SmoothVelocity!(a.u,c.fᶠ,c.n̂,c.λρ)
+    BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
+    measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
+    calculateL!(a,c)
+    update!(b)
+    project!(a,b);
+    BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
+    a.p .= oldp
+    @loop a.σ[I] = div(I,a.u) over I ∈ inside(a.p)
+    diver = max(maximum(@views a.σ[inside(a.p)]),-minimum(@views a.σ[inside(a.p)]))
+    @printf("Smoothed velocity: ∇⋅u = %.6e, nPois = %2d, res0 = %.6e, res = %.6e\n", diver, b.n[end], b.res0[end], b.res[end])
+    pop!(b.res); pop!(b.res0); pop!(b.n)
+end
+function SmoothVelocity!(u::AbstractArray{T,dv}, f::AbstractArray{T,d}, buffer::AbstractArray{T,dv},λρ) where {T,d,dv}
+    buffer .= 0
+    for i∈1:d
+        @loop SmoothVelocity!(u,f,buffer,λρ,i,I) over I ∈ inside(f)
+    end
+    u .= buffer
+end
+# function SmoothVelocity!(u::AbstractArray{T,dv}, f::AbstractArray{T,d}, buffer::AbstractArray{T,dv},λρ,i,I) where {T,d,dv}
+#     fM = ϕ(i,I,f)
+#     if 0.5<fM<1.0
+#         rhoM = calculateρ(i,I,f,λρ)
+#         buffer[I,i] += rhoM*u[I,i]
+#         a = rhoM
+#         for j∈1:d
+#             rhoU = calculateρ(i,I-δ(j, I),f,λρ)
+#             rhoD = calculateρ(i,I+δ(j, I),f,λρ)
+#             buffer[I,i] += rhoD*u[I+δ(j, I),i] + rhoU*u[I-δ(j, I),i]
+#             a += rhoD+rhoU
+#         end
+#         buffer[I,i] /= a
+#     else
+#         buffer[I,i] = u[I,i]
+#     end
+# end
+function SmoothVelocity!(u::AbstractArray{T,dv}, f::AbstractArray{T,d}, buffer::AbstractArray{T,dv},λρ,i,I) where {T,d,dv}
+    fM = ϕ(i,I,f)
+    if 0.1<fM<1.0
+        a = zero(eltype(u))
+        for II ∈ boxAroundI(I)
+            rhoII = calculateρ(i,II,f,λρ)
+            buffer[I,i] += rhoII*u[I,i]
+            a += rhoII
+        end
+        buffer[I,i] /= a
+    else
+        buffer[I,i] = u[I,i]
+    end
 end
 
 """
@@ -383,7 +443,7 @@ function measure!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,t=0)
 end
 
 
-function conv_diff!(r,u,Φ;ν=(i,j,I) -> 0.1,ρ=(i,I)->1,perdir=(0,),g=(0,0,0))
+function conv_diff2p!(r,u,Φ;ν=(i,j,I) -> 0.1,ρ=(i,I)->1,perdir=(0,),g=(0,0,0))
 # function conv_diff!(r,u,Φ,ν,ρ,perdir,g)
     r .= 0.
     N,n = size_u(u)
@@ -458,17 +518,18 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
 """
 @fastmath function mom_step!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody)
     a.u⁰ .= a.u;
-    smoothStep = 4
+    smoothStep = 2
 
     # predictor u → u'
-    advect!(a,c,c.f,a.u⁰,a.u);
-    measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
+    advect!(a,c,c.f,a.u⁰,a.u); # checked by extensive convection
+    measure!(a,d;t=0,ϵ=1,perdir=a.perdir) # indeed all will be one
     a.u .= 0
-    vof_smooth!(smoothStep, c.f⁰, c.fᶠ, c.α;perdir=c.perdir)
-    @inline ν(i,j,I) = calculateμ(i,j,I,c.fᶠ,c.λμ,a.ν,c.boxIterator)
+    vof_smooth!(smoothStep, c.f⁰, c.fᶠ, c.α;perdir=c.perdir) # checked by manual calculation
+    @inline ν(i,j,I) = calculateμ(i,j,I,c.fᶠ,c.λμ,a.ν)
     @inline ρ(i,I) = calculateρ(i,I,c.fᶠ,c.λρ)
-    conv_diff!(a.f,a.u⁰,a.σ,ν=ν,ρ=ρ, perdir=a.perdir,g=a.g)
-    BDIM!(a); 
+    a.σ .= 0
+    conv_diff2p!(a.f,a.u⁰,a.σ,ν=ν,ρ=ρ, perdir=a.perdir,g=a.g)
+    BDIM!(a); # This also work correctly
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
     calculateL!(a,c)
     update!(b)
@@ -479,9 +540,10 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     advect!(a,c,c.f⁰,a.u⁰,a.u);
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
     vof_smooth!(smoothStep, c.f, c.fᶠ, c.α;perdir=c.perdir)
-    @inline ν_(i,j,I) = calculateμ(i,j,I,c.fᶠ,c.λμ,a.ν,c.boxIterator)
+    @inline ν_(i,j,I) = calculateμ(i,j,I,c.fᶠ,c.λμ,a.ν)
     @inline ρ_(i,I) = calculateρ(i,I,c.fᶠ,c.λρ)
-    conv_diff!(a.f,a.u,a.σ,ν=ν_,ρ=ρ_, perdir=a.perdir,g=a.g)
+    a.σ .= 0
+    conv_diff2p!(a.f,a.u,a.σ,ν=ν_,ρ=ρ_, perdir=a.perdir,g=a.g)
     BDIM!(a); a.u ./= 2;
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, f=2, perdir=a.perdir)
     calculateL!(a,c)
@@ -505,20 +567,32 @@ function CFL(a::Flow,c::cVOF)
     fluxLimit = inv(maximum(@views a.σ[inside(a.σ)])+5*a.ν*max(1,c.λμ/c.λρ))
     @inside a.σ[I] = MaxTotalflux(I,a.u)
     cVOFLimit = 0.5*inv(maximum(@views a.σ[inside(a.σ)]))
-    0.5min(10.,fluxLimit,cVOFLimit)
+    0.8min(10.,fluxLimit,cVOFLimit)
 end
+
+# function myCFL(a::Flow,c::cVOF)
+#     @inside a.σ[I] = flux_out(I,a.u)
+#     tCFL = inv(maximum(@views a.σ[inside(a.σ)]))
+#     tFr = inv(√sum((i)->i^2,a.g))
+#     tRe = 3/14*inv(a.ν*max(1,c.λμ/c.λρ))^2
+#     @inside a.σ[I] = MaxTotalflux(I,a.u)
+#     tCOF = 0.5*inv(maximum(@views a.σ[inside(a.σ)]))
+#     0.2min(10.,tCFL,tFr,tRe,tCOF)
+# end
 
 @inline calculateρ(d,I,f,λ) = (ϕ(d,I,f)*(1-λ) + λ)
 
-@inline function calculateμ(i,j,I,f,λ,μ,it)
+@inline function calculateμ(i,j,I,f,λ,μ)
     (i==j) && return (f[I-δ(i,I)]*(1-λ) + λ)*μ
     n = length(I)
     s = zero(eltype(f))
-    for II in it
-        s += f[I-CartesianIndex(II)]
+    for II in (I-oneunit(I)):I
+        s += f[II]
+        # s += 1/(f[II]/1+(1-f[II])/λ)
     end
     s /= 2^n
     return (s * (1-λ) + λ)*μ
+    # return s*μ
 end
 
 function calculateL!(a::Flow{n}, c::cVOF) where {n}

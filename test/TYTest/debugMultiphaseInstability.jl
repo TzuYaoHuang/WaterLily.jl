@@ -21,10 +21,11 @@ Return a CartesianIndex of dimension `N` which is one at index `i` and zero else
 δ(i,I::CartesianIndex{N}) where N = δ(i, Val{N}())
 
 # CASE configuration
-N = 96
+N = 128
 q = 1.0
-disturb = 0.05
-computationID =  @sprintf("3DNewVortexBreak%d_q%.2f_dis%.2f",N,q,disturb)
+m = 0
+disturb = 0.1
+computationID =  @sprintf("3DNoAxialm%dVortexBreak%d_q%.2f_dis%.2f",m,N,q,disturb)
 println("You are now running: "*computationID); flush(stdout)
 
 function calculateDiv!(flow)
@@ -48,7 +49,9 @@ function puresim!(sim,duration,recostep)
 
     iTime = 0
     jldsave("JLD2/"*computationID*"VelVOF_"*string(iTime)*".jld2"; u=Array(sim.flow.u), f=Array(sim.inter.f))
+    ii = 0
     @time for timeNow in timeArray
+        # (ii%2 == 1) && WaterLily.SmoothVelocity!(sim.flow,sim.pois,sim.inter,sim.body)
         WaterLily.sim_step!(sim,timeNow;remeasure=false)
         iTime += 1
         jldsave("JLD2/"*computationID*"VelVOF_"*string(iTime)*".jld2"; u=Array(sim.flow.u), f=Array(sim.inter.f))
@@ -62,6 +65,7 @@ function puresim!(sim,duration,recostep)
             poisN=sim.pois.n[numProject+1:end],
             dts=sim.flow.Δt
         )
+        ii+=1
     end
 end
 
@@ -88,8 +92,9 @@ function multiphaseQVortex(NN; Re=4000, T=Float32, mem=Array)
 
         # velocities in cylindrical coordinate
         uTheta  = q/r*U*(1-exp(-r^2))*compactRSupport
-        uRadial = disturb*U/r*(1-exp(-r^2))/0.63817*sin(2*pi/λ*z)*compactRSupport
-        uAxial  =     U*(1-exp(-r^2))  # wake-like axial flow
+        (m==0)&&(uRadial = disturb*U/r*(1-exp(-r^2))/0.63817*sin(2*pi/λ*z)*compactRSupport)
+        (m==1)&&(uRadial = disturb*U*    sech(2r/dᵥ)^2*sin(2*pi/λ*z+theta)*compactRSupport)
+        uAxial  =     U*(1-exp(-r^2))*0  # wake-like axial flow
 
         zConnect = 1.0
 
@@ -119,7 +124,7 @@ end
 dur = 200
 stp = 0.1
 
-sim = multiphaseQVortex(N)
+sim = multiphaseQVortex(N,T=Float32,Re=2500)
 
 puresim!(sim,dur,stp)
 
