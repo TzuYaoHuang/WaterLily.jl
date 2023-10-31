@@ -37,13 +37,13 @@ function applyVOF!(f,α,n̂,FreeSurfsdf)
     tol = 10eps(eltype(f))
     N,n = size_u(n̂)
     @loop applyVOF!(f,α,n̂,FreeSurfsdf,n,I) over I ∈ inside(f)
-    f[f.<=tol] .= 0.0
-    f[f.>=1.0-tol] .= 1.0
+    @loop f[I] = f[I] <= tol ? 0.0 : f[I] over I ∈ inside(f)
+    @loop f[I] = f[I] >= 1-tol ? 1.0 : f[I] over I ∈ inside(f)
 end
 function applyVOF!(f,α,n̂,FreeSurfsdf,n,I)
     α[I] = FreeSurfsdf(loc(0,I));
     if abs2(α[I])>n/4 
-        f[I] = ifelse(α[I]>0,0,1)
+        f[I] = α[I]>0 ? 0 : 1
     else
         # nhat = ForwardDiff.gradient(FreeSurfsdf,loc(0,I));
         # nhat /= sqrt(sum(nhat.^2));
@@ -402,7 +402,7 @@ function freeint_update!(δt, f, fᶠ, n̂, α, u, u⁰, c̄;perdir=(0,),dirdir=
         opCoeff = [0.5,0.5,1.0,0.5,0.5]
     end
 
-    c̄ .= ifelse.(f .<= 0.5, 0, 1)
+    @loop c̄[I] = f[I] <= 0.5 ? 0 : 1 over I ∈ CartesianIndices(f)
     for iOp ∈ CartesianIndices(opOrder)
         d = opOrder[iOp]
         uMulp = opCoeff[iOp]*δt
@@ -430,8 +430,8 @@ function freeint_update!(δt, f, fᶠ, n̂, α, u, u⁰, c̄;perdir=(0,),dirdir=
                 Base.showerror(stdout, e, Base.catch_backtrace())
             end
         end
-        f[f.<=tol] .= 0.0
-        f[f.>=1.0-tol] .= 1.0
+        @loop f[I] = f[I] <= tol ? 0.0 : f[I] over I ∈ inside(f)
+        @loop f[I] = f[I] >= 1-tol ? 1.0 : f[I] over I ∈ inside(f)
         BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
     end
 end
@@ -443,7 +443,7 @@ function measure!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,t=0)
 end
 
 
-function conv_diff2p!(r,u,Φ;ν=(i,j,I) -> 0.1,ρ=(i,I)->1,perdir=(0,),g=(0,0,0))
+function conv_diff2p!(r,u,Φ,fᶠ,λμ,λρ,ν;perdir=(0,),g=(0,0,0))
 # function conv_diff!(r,u,Φ,ν,ρ,perdir,g)
     r .= 0.
     N,n = size_u(u)
@@ -451,16 +451,16 @@ function conv_diff2p!(r,u,Φ;ν=(i,j,I) -> 0.1,ρ=(i,I)->1,perdir=(0,),g=(0,0,0)
         # if it is periodic direction
         tagper = (j in perdir)
         # treatment for bottom boundary with BCs
-        !tagper && lowBoundaryDiff!(r,u,Φ,ν,i,j,N)
-        tagper && lowBoundaryPerDiff!(r,u,Φ,ν,i,j,N)
+        !tagper && lowBoundaryDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N)
+        tagper && lowBoundaryPerDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N)
         # inner cells
-        innerCellDiff!(r,u,Φ,ν,i,j,N)
+        innerCellDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N)
         # treatment for upper boundary with BCs
-        !tagper && upperBoundaryDiff!(r,u,Φ,ν,i,j,N)
+        !tagper && upperBoundaryDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N)
         tagper && upperBoundaryPer!(r,u,Φ,ν,i,j,N)
     end
     for i ∈ 1:n
-        @loop r[I,i] = r[I,i]/ρ(i,I) + g[i] over I ∈ inside_uWB(N,i)
+        @loop r[I,i] = r[I,i]/calculateρ(i,I,fᶠ,λρ) + g[i] over I ∈ inside_uWB(N,i)
     end
     for i ∈ 1:n, j ∈ 1:n
         # if it is periodic direction
@@ -483,9 +483,9 @@ innerCellConv!(r,u,Φ,ν,i,j,N) = (
     ) over I ∈ inside_u(N,j);
     @loop r[I-δ(j,I),i] -= Φ[I] over I ∈ inside_u(N,j)
 )
-innerCellDiff!(r,u,Φ,ν,i,j,N) = (
+innerCellDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N) = (
     @loop (
-        Φ[I] = -ν(i,j,I)*(∂(j,CI(I,i),u)+∂(i,CI(I,j),u));
+        Φ[I] = -calculateμ(i,j,I,fᶠ,λμ,ν)*(∂(j,CI(I,i),u)+∂(i,CI(I,j),u));
         r[I,i] += Φ[I]
     ) over I ∈ inside_u(N,j);
     @loop r[I-δ(j,I),i] -= Φ[I] over I ∈ inside_u(N,j)
@@ -493,18 +493,18 @@ innerCellDiff!(r,u,Φ,ν,i,j,N) = (
 
 # Neumann BC Building block
 lowBoundaryConv!(r,u,Φ,ν,i,j,N) = @loop r[I,i] += ϕ(j,CI(I,i),u)*ϕ(i,CI(I,j),u) over I ∈ slice(N,2,j,2)
-lowBoundaryDiff!(r,u,Φ,ν,i,j,N) = @loop r[I,i] += -ν(i,j,I)*(∂(j,CI(I,i),u)+∂(i,CI(I,j),u)) over I ∈ slice(N,2,j,2)
+lowBoundaryDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N) = @loop r[I,i] += -calculateμ(i,j,I,fᶠ,λμ,ν)*(∂(j,CI(I,i),u)+∂(i,CI(I,j),u)) over I ∈ slice(N,2,j,2)
 
 upperBoundaryConv!(r,u,Φ,ν,i,j,N) = @loop r[I-δ(j,I),i] += - ϕ(j,CI(I,i),u)*ϕ(i,CI(I,j),u) over I ∈ slice(N,N[j],j,2)
-upperBoundaryDiff!(r,u,Φ,ν,i,j,N) = @loop r[I-δ(j,I),i] += ν(i,j,I)*(∂(j,CI(I,i),u)+∂(i,CI(I,j),u)) over I ∈ slice(N,N[j],j,2)
+upperBoundaryDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N) = @loop r[I-δ(j,I),i] += calculateμ(i,j,I,fᶠ,λμ,ν)*(∂(j,CI(I,i),u)+∂(i,CI(I,j),u)) over I ∈ slice(N,N[j],j,2)
 
 # Periodic BC Building block
 lowBoundaryPerConv!(r,u,Φ,ν,i,j,N) = @loop (
     Φ[I] = ϕuSelf(CIj(j,CI(I,i),N[j]-2),CI(I,i)-δ(j,CI(I,i)),CI(I,i),CI(I,i)+δ(j,CI(I,i)),u,ϕ(i,CI(I,j),u));
     r[I,i] += Φ[I]
 ) over I ∈ slice(N,2,j,2)
-lowBoundaryPerDiff!(r,u,Φ,ν,i,j,N) = @loop (
-    Φ[I] = -ν(i,j,I)*(∂(j,CI(I,i),u)+∂(i,CI(I,j),u));
+lowBoundaryPerDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N) = @loop (
+    Φ[I] = -calculateμ(i,j,I,fᶠ,λμ,ν)*(∂(j,CI(I,i),u)+∂(i,CI(I,j),u));
     r[I,i] += Φ[I]
 ) over I ∈ slice(N,2,j,2)
 upperBoundaryPer!(r,u,Φ,ν,i,j,N) = @loop r[I-δ(j,I),i] -= Φ[CIj(j,I,2)] over I ∈ slice(N,N[j],j,2)
@@ -528,7 +528,7 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     @inline ν(i,j,I) = calculateμ(i,j,I,c.fᶠ,c.λμ,a.ν)
     @inline ρ(i,I) = calculateρ(i,I,c.fᶠ,c.λρ)
     a.σ .= 0
-    conv_diff2p!(a.f,a.u⁰,a.σ,ν=ν,ρ=ρ, perdir=a.perdir,g=a.g)
+    conv_diff2p!(a.f,a.u⁰,a.σ,c.fᶠ,c.λμ,c.λρ,a.ν, perdir=a.perdir,g=a.g)
     BDIM!(a); # This also work correctly
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
     calculateL!(a,c)
@@ -543,7 +543,7 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     @inline ν_(i,j,I) = calculateμ(i,j,I,c.fᶠ,c.λμ,a.ν)
     @inline ρ_(i,I) = calculateρ(i,I,c.fᶠ,c.λρ)
     a.σ .= 0
-    conv_diff2p!(a.f,a.u,a.σ,ν=ν_,ρ=ρ_, perdir=a.perdir,g=a.g)
+    conv_diff2p!(a.f,a.u,a.σ,c.fᶠ,c.λμ,c.λρ,a.ν, perdir=a.perdir,g=a.g)
     BDIM!(a); a.u ./= 2;
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, f=2, perdir=a.perdir)
     calculateL!(a,c)

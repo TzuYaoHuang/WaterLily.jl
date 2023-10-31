@@ -28,7 +28,7 @@ Return a CartesianIndex of dimension `N` which is one at index `i` and zero else
 δ(i,::Val{N}) where N = CI(ntuple(j -> j==i ? 1 : 0, N))
 δ(i,I::CartesianIndex{N}) where N = δ(i, Val{N}())
 
-N = 64
+N = 128
 computationID = "DamBreakHeun"*string(N)
 grav=9.81
 
@@ -104,9 +104,6 @@ end
 function sim_gif!(sim;duration=1,step=0.1,verbose=true,R=inside(sim.flow.p),
                     remeasure=false,plotbody=false,kv...)
     t₀ = round(WaterLily.sim_time(sim))
-    for I∈inside(sim.flow.σ)
-        sim.flow.σ[I] = WaterLily.div(I,sim.flow.u)
-    end
 
     xMidList = (1:N).-0.5
 
@@ -123,29 +120,41 @@ function sim_gif!(sim;duration=1,step=0.1,verbose=true,R=inside(sim.flow.p),
         end
         return locTemp
     end
-    ke = KE(sim.flow.u,sim.inter.f,sim.inter.λρ)
-    pe = PE(sim.inter.f,sim.inter.λρ,grav,2)
-    diver = [Statistics.sum(abs.(sim.flow.σ[R]))]
-    mass = [Statistics.mean(sim.inter.f[R])]
-    maxU = [maximum(sqrt.(Statistics.sum(sim.flow.u.^2,dims=4)))]
-    loc = [getFrontLocation(sim.inter.f)]
+
+    uu = zeros(size(sim.flow.u))
+    pp = zeros(size(sim.inter.f))
+    ff = pp*0
+    ss = ff*0
+
+    copyto!(uu, sim.flow.u); copyto!(pp, sim.flow.p); copyto!(ss, sim.flow.σ); copyto!(ff, sim.inter.f)
+    for I∈inside(ss)
+        ss[I] = WaterLily.div(I,uu)
+    end
+    ke = KE(uu,ff,sim.inter.λρ)
+    pe = PE(ff,sim.inter.λρ,grav,2)
+    diver = [Statistics.sum(abs.(ss[R]))]
+    mass = [Statistics.mean(ff[R])]
+    maxU = [maximum(sqrt.(Statistics.sum(uu.^2,dims=4)))]
+    loc = [getFrontLocation(ff)]
     trueTime = [WaterLily.time(sim)]
     
     @time anim = @animate for tᵢ in range(t₀,t₀+duration;step)
     # @time for tᵢ in range(t₀,t₀+duration;step)
         WaterLily.sim_step!(sim,tᵢ;remeasure)
-        for I∈inside(sim.flow.σ)
-            sim.flow.σ[I] = WaterLily.div(I,sim.flow.u)
+
+        copyto!(uu, sim.flow.u); copyto!(pp, sim.flow.p); copyto!(ss, sim.flow.σ); copyto!(ff, sim.inter.f)
+        for I∈inside(ss)
+            ss[I] = WaterLily.div(I,uu)
         end
-        push!(diver,maximum(abs.(sim.inter.f[R].*sim.flow.σ[R])))
-        push!(mass,Statistics.mean(sim.inter.f[R]))
-        push!(maxU,maximum(sqrt.(Statistics.sum(sim.flow.u.^2,dims=4))))
-        push!(loc,getFrontLocation(sim.inter.f))
+        push!(diver,Statistics.sum(abs.(ss[R])))
+        push!(mass,Statistics.mean(ff[R]))
+        push!(maxU,maximum(sqrt.(Statistics.sum(uu.^2,dims=4))))
+        push!(loc,getFrontLocation(ff))
         push!(trueTime,WaterLily.time(sim))
-        ke = cat(ke,KE(sim.flow.u,sim.inter.f,sim.inter.λρ),dims=2)
-        pe = cat(pe,PE(sim.inter.f,sim.inter.λρ,grav,2),dims=2)
-        Plots.contourf(lx,ly,clamp.(sim.flow.p[2:end-1,2:end-1]'/sim.U^2*2,0,1), aspect_ratio=:equal,color=:roma,levels=60,xlimit=[0,1],ylimit=[0,1],linewidth=0,clim=(0,1))
-        Plots.contour!(lx,ly,sim.inter.f[2:end-1,2:end-1]', aspect_ratio=:equal,color=:Black,levels=[0.5],xlimit=[0,1],ylimit=[0,1],linewidth=2)
+        ke = cat(ke,KE(uu,ff,sim.inter.λρ),dims=2)
+        pe = cat(pe,PE(ff,sim.inter.λρ,grav,2),dims=2)
+        Plots.contourf(lx,ly,clamp.(pp[2:end-1,2:end-1]'/sim.U^2*2,0,1), aspect_ratio=:equal,color=:roma,levels=60,xlimit=[0,1],ylimit=[0,1],linewidth=0,clim=(0,1))
+        Plots.contour!(lx,ly,ff[2:end-1,2:end-1]', aspect_ratio=:equal,color=:Black,levels=[0.5],xlimit=[0,1],ylimit=[0,1],linewidth=2)
         plotbody && body_plot!(sim)
         verbose && @printf("tU/L=%6.3f, ΔtU/L=%.8f\n",trueTime[end]*sim.U/sim.L,sim.flow.Δt[end]*sim.U/sim.L)
     end
@@ -153,7 +162,7 @@ function sim_gif!(sim;duration=1,step=0.1,verbose=true,R=inside(sim.flow.p),
     return diver,mass,maxU,loc,trueTime,ke,pe
 end
 
-function damBreak(NN;Re=493.954,g=grav)
+function damBreak(NN;Re=493.954,g=grav,arr=Array)
     LDomain = (NN,NN)
     H = NN/4
     LScale = H
@@ -161,25 +170,20 @@ function damBreak(NN;Re=493.954,g=grav)
     ν = UScale*LScale/Re
 
     function interSDF(xx)
-        y,z = @. xx-1.5
-        if y<=H && z <= 2H
-            return max(y-H,z-2H)
-        elseif y<=H && z > 2H
-            return z-2H
-        elseif y>H && z <= 2H
-            return y-H
-        elseif y>H && z > 2H
-            return sqrt((z-2H)^2+(y-H)^2)
-        end
+        x = xx .-1.5 .- SA[H,2H]
+        return √sum((xi) -> max(0,xi)^2,x) + min(0, maximum(x))
     end
 
-    return WaterLily.TwoPhaseSimulation(LDomain, (0,0), LScale;U=UScale, Δt=0.01,grav=(0,-g), ν=ν, InterfaceSDF=interSDF, T=Float64,λμ=1e-2,λρ=1e-3)
+    return WaterLily.TwoPhaseSimulation(LDomain, (0,0), LScale;U=UScale, Δt=0.01,grav=(0,-g), ν=ν, InterfaceSDF=interSDF, T=Float32,λμ=1e-2,λρ=1e-3,mem=arr)
 end
 
+using CUDA: CUDA
+@assert CUDA.functional()
+println("CUDA is working? ", CUDA.functional())
 
-sim = damBreak(N)
+sim = damBreak(N,arr=CUDA.CuArray)
 
-diver,mass,maxU,loc,trueTime,ke,pe = sim_gif!(sim,duration=10, step=0.01,clims=(0,1),plotbody=false,verbose=true,levels=0.0:0.05:1.0,remeasure=false,cfill=:RdBu,linewidth=2,xlimit=[0,32],ylimit=[0,32],shift=(-0.5,-0.5));
+diver,mass,maxU,loc,trueTime,ke,pe = sim_gif!(sim,duration=10, step=0.05,clims=(0,1),plotbody=false,verbose=true,levels=0.0:0.05:1.0,remeasure=false,cfill=:RdBu,linewidth=2,xlimit=[0,32],ylimit=[0,32],shift=(-0.5,-0.5));
 
 trueTime *= sim.U/sim.L
 maxU /= sim.U
