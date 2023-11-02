@@ -16,6 +16,7 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
     λρ:: T   # ratio of density
     function cVOF(N::NTuple{D}, n̂place, αplace; arr=Array, InterfaceSDF::Function=(x) -> 5-x[1], T=Float64, perdir=(0,), dirdir=(0,),λμ=0.0180989244,λρ=0.001206) where D
         Ng = N .+ 2
+        Nd = (Ng..., D)
         f = ones(T, Ng) |> arr
         fᶠ = copy(f)
         n̂ = n̂place; α = αplace
@@ -98,14 +99,15 @@ function vof_smooth!(itm, f::AbstractArray{T,d}, sf::AbstractArray{T,d}, rf::Abs
     (itm==0)&&(sf .= f)
 end
 
-function SmoothVelocity!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody)
-    oldp = copy(a.p)
-    vof_smooth!(2, c.f, c.fᶠ, c.α;perdir=c.perdir)
+function SmoothVelocity!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,oldp)
+    oldp .= a.p
+    vof_smooth!(0, c.f, c.fᶠ, c.α;perdir=c.perdir)
     SmoothVelocity!(a.u,c.fᶠ,c.n̂,c.λρ)
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
     calculateL!(a,c)
     update!(b)
+    a.p .= 0
     project!(a,b);
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
     a.p .= oldp
@@ -121,30 +123,13 @@ function SmoothVelocity!(u::AbstractArray{T,dv}, f::AbstractArray{T,d}, buffer::
     end
     u .= buffer
 end
-# function SmoothVelocity!(u::AbstractArray{T,dv}, f::AbstractArray{T,d}, buffer::AbstractArray{T,dv},λρ,i,I) where {T,d,dv}
-#     fM = ϕ(i,I,f)
-#     if 0.5<fM<1.0
-#         rhoM = calculateρ(i,I,f,λρ)
-#         buffer[I,i] += rhoM*u[I,i]
-#         a = rhoM
-#         for j∈1:d
-#             rhoU = calculateρ(i,I-δ(j, I),f,λρ)
-#             rhoD = calculateρ(i,I+δ(j, I),f,λρ)
-#             buffer[I,i] += rhoD*u[I+δ(j, I),i] + rhoU*u[I-δ(j, I),i]
-#             a += rhoD+rhoU
-#         end
-#         buffer[I,i] /= a
-#     else
-#         buffer[I,i] = u[I,i]
-#     end
-# end
 function SmoothVelocity!(u::AbstractArray{T,dv}, f::AbstractArray{T,d}, buffer::AbstractArray{T,dv},λρ,i,I) where {T,d,dv}
     fM = ϕ(i,I,f)
-    if 0.1<fM<1.0
+    if fM<=0.5
         a = zero(eltype(u))
         for II ∈ boxAroundI(I)
             rhoII = calculateρ(i,II,f,λρ)
-            buffer[I,i] += rhoII*u[I,i]
+            buffer[I,i] += rhoII*u[II,i]
             a += rhoII
         end
         buffer[I,i] /= a
@@ -404,6 +389,7 @@ function freeint_update!(δt, f, fᶠ, n̂, α, u, u⁰, c̄;perdir=(0,),dirdir=
 
     @loop c̄[I] = f[I] <= 0.5 ? 0 : 1 over I ∈ CartesianIndices(f)
     for iOp ∈ CartesianIndices(opOrder)
+        fᶠ .= 0
         d = opOrder[iOp]
         uMulp = opCoeff[iOp]*δt
         vof_reconstruct!(f,α,n̂,perdir=perdir,dirdir=dirdir)
@@ -521,15 +507,13 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     smoothStep = 2
 
     # predictor u → u'
-    advect!(a,c,c.f,a.u⁰,a.u); # checked by extensive convection
-    measure!(a,d;t=0,ϵ=1,perdir=a.perdir) # indeed all will be one
+    advect!(a,c,c.f,a.u⁰,a.u)
+    measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
     a.u .= 0
-    vof_smooth!(smoothStep, c.f⁰, c.fᶠ, c.α;perdir=c.perdir) # checked by manual calculation
-    @inline ν(i,j,I) = calculateμ(i,j,I,c.fᶠ,c.λμ,a.ν)
-    @inline ρ(i,I) = calculateρ(i,I,c.fᶠ,c.λρ)
+    vof_smooth!(smoothStep, c.f⁰, c.fᶠ, c.α;perdir=c.perdir)
     a.σ .= 0
     conv_diff2p!(a.f,a.u⁰,a.σ,c.fᶠ,c.λμ,c.λρ,a.ν, perdir=a.perdir,g=a.g)
-    BDIM!(a); # This also work correctly
+    BDIM!(a)
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
     calculateL!(a,c)
     update!(b)
@@ -537,11 +521,9 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
 
     # corrector u → u¹
-    advect!(a,c,c.f⁰,a.u⁰,a.u);
+    advect!(a,c,c.f⁰,a.u⁰,a.u)
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
     vof_smooth!(smoothStep, c.f, c.fᶠ, c.α;perdir=c.perdir)
-    @inline ν_(i,j,I) = calculateμ(i,j,I,c.fᶠ,c.λμ,a.ν)
-    @inline ρ_(i,I) = calculateρ(i,I,c.fᶠ,c.λρ)
     a.σ .= 0
     conv_diff2p!(a.f,a.u,a.σ,c.fᶠ,c.λμ,c.λρ,a.ν, perdir=a.perdir,g=a.g)
     BDIM!(a); a.u ./= 2;
@@ -595,9 +577,10 @@ end
     # return s*μ
 end
 
-function calculateL!(a::Flow{n}, c::cVOF) where {n}
+calculateL!(a::Flow{n}, c::cVOF) where {n} = calculateL!(a.μ₀,c.fᶠ,c.λρ,n,a.U,a.perdir)
+function calculateL!(μ₀,f,λρ,n,U,perdir)
     for d ∈ 1:n
-        @loop a.μ₀[I,d] /= calculateρ(d,I,c.fᶠ,c.λρ) over I∈inside(a.p)
+        @loop μ₀[I,d] /= calculateρ(d,I,f,λρ) over I∈inside(f)
     end
-    BCVecPerNeu!(a.μ₀;Dirichlet=false, A=a.U, perdir=a.perdir)
+    BCVecPerNeu!(μ₀;Dirichlet=false, A=U, perdir=perdir)
 end

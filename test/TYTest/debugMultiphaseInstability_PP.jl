@@ -142,11 +142,13 @@ function ComputeMeanU!(uCyl, uMeanRadial, uMeanAzimuthal, uMeanAxial, rMat, rGau
 end
 
 # CASE configuration
-N = 128
+N = 192
 q = 1.0
-m = 0
 disturb = 0.1
-computationID =  @sprintf("3DNoAxialm%dVortexBreak%d_q%.2f_dis%.2f",m,N,q,disturb)
+VOFdisturb = 0.0
+m = 0
+Axialq = 1.0
+computationID =  @sprintf("3DVBSmooth_N%d_m%d_q%.2f_qA%.2f_Urdis%.2f_VOFdis%.2f",N,m,q,Axialq,disturb,VOFdisturb)
 println("You are now processing: "*computationID); flush(stdout)
 
 # READ the configuration

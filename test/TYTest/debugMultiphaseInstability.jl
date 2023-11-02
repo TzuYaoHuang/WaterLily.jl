@@ -21,11 +21,13 @@ Return a CartesianIndex of dimension `N` which is one at index `i` and zero else
 δ(i,I::CartesianIndex{N}) where N = δ(i, Val{N}())
 
 # CASE configuration
-N = 128
+N = 192
 q = 1.0
-m = 0
 disturb = 0.1
-computationID =  @sprintf("3DNoAxialm%dVortexBreak%d_q%.2f_dis%.2f",m,N,q,disturb)
+VOFdisturb = 0.0
+m = 0
+Axialq = 1.0
+computationID =  @sprintf("3DVBSmooth_N%d_m%d_q%.2f_qA%.2f_Urdis%.2f_VOFdis%.2f",N,m,q,Axialq,disturb,VOFdisturb)
 println("You are now running: "*computationID); flush(stdout)
 
 function calculateDiv!(flow)
@@ -47,11 +49,13 @@ function puresim!(sim,duration,recostep)
 
     trueTime = [WaterLily.time(sim)]
 
+    oldPStorage = sim.flow.p*0
+
     iTime = 0
     jldsave("JLD2/"*computationID*"VelVOF_"*string(iTime)*".jld2"; u=Array(sim.flow.u), f=Array(sim.inter.f))
     ii = 0
     @time for timeNow in timeArray
-        # (ii%2 == 1) && WaterLily.SmoothVelocity!(sim.flow,sim.pois,sim.inter,sim.body)
+        (ii%1 == 0) && WaterLily.SmoothVelocity!(sim.flow,sim.pois,sim.inter,sim.body,oldPStorage)
         WaterLily.sim_step!(sim,timeNow;remeasure=false)
         iTime += 1
         jldsave("JLD2/"*computationID*"VelVOF_"*string(iTime)*".jld2"; u=Array(sim.flow.u), f=Array(sim.inter.f))
@@ -94,7 +98,7 @@ function multiphaseQVortex(NN; Re=4000, T=Float32, mem=Array)
         uTheta  = q/r*U*(1-exp(-r^2))*compactRSupport
         (m==0)&&(uRadial = disturb*U/r*(1-exp(-r^2))/0.63817*sin(2*pi/λ*z)*compactRSupport)
         (m==1)&&(uRadial = disturb*U*    sech(2r/dᵥ)^2*sin(2*pi/λ*z+theta)*compactRSupport)
-        uAxial  =     U*(1-exp(-r^2))*0  # wake-like axial flow
+        uAxial  =     U*exp(-r^2)*Axialq  # jet-like axial flow
 
         zConnect = 1.0
 
@@ -108,7 +112,7 @@ function multiphaseQVortex(NN; Re=4000, T=Float32, mem=Array)
     # Interface function
     function Inter(xyz)
         x,y,z = @. (xyz-1.5-Lp/2)
-        return 0.5*dᵥ*delta0-√(x^2+y^2)
+        return 0.5*dᵥ*delta0*(1+VOFdisturb*sin(2*pi/(λ*delta0)*z))-√(x^2+y^2)
     end
 
     # Initialize simulation
