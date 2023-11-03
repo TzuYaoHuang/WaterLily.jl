@@ -104,6 +104,7 @@ function SmoothVelocity!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,oldp
     vof_smooth!(0, c.f, c.fᶠ, c.α;perdir=c.perdir)
     SmoothVelocity!(a.u,c.fᶠ,c.n̂,c.λρ)
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
+    vof_smooth!(2, c.f, c.fᶠ, c.α;perdir=c.perdir)
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
     calculateL!(a,c)
     update!(b)

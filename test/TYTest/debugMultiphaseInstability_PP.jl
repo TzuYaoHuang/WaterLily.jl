@@ -13,6 +13,7 @@ using StatsBase
 using WriteVTK
 using StaticArrays
 using LaTeXStrings
+ENV["GKSwstype"]="nul"
 
 default()
 Plots.scalefontsizes()
@@ -142,12 +143,12 @@ function ComputeMeanU!(uCyl, uMeanRadial, uMeanAzimuthal, uMeanAxial, rMat, rGau
 end
 
 # CASE configuration
-N = 192
+N = 128
 q = 1.0
 disturb = 0.1
 VOFdisturb = 0.0
 m = 0
-Axialq = 1.0
+Axialq = 0.0
 computationID =  @sprintf("3DVBSmooth_N%d_m%d_q%.2f_qA%.2f_Urdis%.2f_VOFdis%.2f",N,m,q,Axialq,disturb,VOFdisturb)
 println("You are now processing: "*computationID); flush(stdout)
 
@@ -283,8 +284,10 @@ animZSlice = Animation()
 
     # Plot X slice
     Plots.plot(size=(800,700))
-    Plots.contourf!(xedg,xedg,clamp.(VorticityStore[midSlice,:,:,1]',-10,10), aspect_ratio=:equal,color=:seismic,levels=60,xlimit=[-4,4],ylimit=[-4,4],linewidth=0,clim=(-10,10))
-    Plots.contour!(xcen,xcen,VOFStore[midSlice,:,:]', aspect_ratio=:equal,color=:Black,levels=[0.5],xlimit=[-4,4],ylimit=[-4,4],linewidth=2)
+    VorticitySlice = (VorticityStore[midSlice,:,:,1] + VorticityStore[midSlice+1,:,:,1])/2
+    VOFSlice = (VOFStore[midSlice,:,:]+VOFStore[midSlice+1,:,:])/2
+    Plots.contourf!(xedg,xedg,clamp.(VorticitySlice',-10,10), aspect_ratio=:equal,color=:seismic,levels=60,xlimit=[-4,4],ylimit=[-4,4],linewidth=0,clim=(-10,10))
+    Plots.contour!(xcen,xcen,VOFSlice', aspect_ratio=:equal,color=:Black,levels=[0.5],xlimit=[-4,4],ylimit=[-4,4],linewidth=2)
     Plots.plot!(xlabel=L"y/d_\mathrm{v}",ylabel=L"z/d_\mathrm{v}",colorbar_title=L"\omega_x d_\mathrm{v}/U")
     frame(animXSlice,Plots.plot!())
 

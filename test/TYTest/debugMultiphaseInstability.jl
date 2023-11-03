@@ -21,12 +21,12 @@ Return a CartesianIndex of dimension `N` which is one at index `i` and zero else
 δ(i,I::CartesianIndex{N}) where N = δ(i, Val{N}())
 
 # CASE configuration
-N = 192
+N = 128
 q = 1.0
 disturb = 0.1
 VOFdisturb = 0.0
 m = 0
-Axialq = 1.0
+Axialq = 0.0
 computationID =  @sprintf("3DVBSmooth_N%d_m%d_q%.2f_qA%.2f_Urdis%.2f_VOFdis%.2f",N,m,q,Axialq,disturb,VOFdisturb)
 println("You are now running: "*computationID); flush(stdout)
 
@@ -55,7 +55,7 @@ function puresim!(sim,duration,recostep)
     jldsave("JLD2/"*computationID*"VelVOF_"*string(iTime)*".jld2"; u=Array(sim.flow.u), f=Array(sim.inter.f))
     ii = 0
     @time for timeNow in timeArray
-        (ii%1 == 0) && WaterLily.SmoothVelocity!(sim.flow,sim.pois,sim.inter,sim.body,oldPStorage)
+        (ii%2 == 1) && WaterLily.SmoothVelocity!(sim.flow,sim.pois,sim.inter,sim.body,oldPStorage)
         WaterLily.sim_step!(sim,timeNow;remeasure=false)
         iTime += 1
         jldsave("JLD2/"*computationID*"VelVOF_"*string(iTime)*".jld2"; u=Array(sim.flow.u), f=Array(sim.inter.f))
