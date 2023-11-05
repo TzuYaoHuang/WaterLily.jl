@@ -13,6 +13,7 @@ using StatsBase
 using WriteVTK
 using StaticArrays
 using LaTeXStrings
+using Loess
 ENV["GKSwstype"]="nul"
 
 default()
@@ -165,9 +166,10 @@ catch err
 end
 
 trueTime = JLDFile["trueTime"]; trueTime .*= UScale/LScale
+T = eltype(trueTime)
 timeLimit = [minimum(trueTime),maximum(trueTime)]
 dtTrueTime = trueTime[2:end] .- trueTime[1:end-1]
-clamp!(dtTrueTime,1e-8,Inf)
+dtTrueTime[dtTrueTime .<= 10eps(T)] .= median(dtTrueTime)
 dts = JLDFile["dts"]; dts .*= UScale/LScale
 
 resIni = JLDFile["resIni"]
@@ -251,14 +253,16 @@ animZSlice = Animation()
     Se[iTime] =  E(SeI,VelocityStore,VOFStore,λρ)
     
 
-    if false
-        for I ∈ inside(λ2Store)
-            λ2Store[I] = WaterLily.λ₂(I,VelocityStore)*LScale^2
-        end
-        vtk_grid("VTK/"*computationID*"VelVOF_"*string(iTime-1), xcen[2:end-1], xcen[2:end-1], xcen[2:end-1]) do vtk
+    if false #&& ((iTime-1)%4==0)
+        StaggerToCollocateVel!(VelocityStore, VelocityAtCollocated)
+        # for I ∈ inside(λ2Store)
+        #     λ2Store[I] = WaterLily.λ₂(I,VelocityStore)*LScale^2
+        # end
+        vtk_grid("VTK/"*computationID*"VelVOF_"*string(iTime-1)*".vti", xcen[2:end-1], xcen[2:end-1], xcen[2:end-1]) do vtk
             vtk["VOF"] = @views VOFStore[inside(VOFStore)]
             # vtk["Vel"] = @views (VelocityStore[inside(VOFStore),1],VelocityStore[inside(VOFStore),2],VelocityStore[inside(VOFStore),3])
-            vtk["l2"] = @views λ2Store[inside(λ2Store)]
+            # vtk["l2"] = @views λ2Store[inside(λ2Store)]
+            vtk["Vel"] = permutedims(VelocityAtCollocated,(4,1,2,3))
         end
     end
 
@@ -288,20 +292,20 @@ animZSlice = Animation()
     VOFSlice = (VOFStore[midSlice,:,:]+VOFStore[midSlice+1,:,:])/2
     Plots.contourf!(xedg,xedg,clamp.(VorticitySlice',-10,10), aspect_ratio=:equal,color=:seismic,levels=60,xlimit=[-4,4],ylimit=[-4,4],linewidth=0,clim=(-10,10))
     Plots.contour!(xcen,xcen,VOFSlice', aspect_ratio=:equal,color=:Black,levels=[0.5],xlimit=[-4,4],ylimit=[-4,4],linewidth=2)
-    Plots.plot!(xlabel=L"y/d_\mathrm{v}",ylabel=L"z/d_\mathrm{v}",colorbar_title=L"\omega_x d_\mathrm{v}/U")
+    Plots.plot!(xlabel=L"y",ylabel=L"z",colorbar_title=L"\omega_x")
     frame(animXSlice,Plots.plot!())
 
     # Plot Z slice
     Plots.plot(size=(800,700))
     Plots.contourf!(xedg,xedg,clamp.(VorticityStore[:,:,midSlice,3]',-10,10), aspect_ratio=:equal,color=:seismic,levels=60,xlimit=[-4,4],ylimit=[-4,4],linewidth=0,clim=(-10,10))
     Plots.contour!(xcen,xcen,VOFStore[:,:,midSlice]', aspect_ratio=:equal,color=:Black,levels=[0.5],xlimit=[-4,4],ylimit=[-4,4],linewidth=2)
-    Plots.plot!(xlabel=L"x/d_\mathrm{v}",ylabel=L"y/d_\mathrm{v}",colorbar_title=L"\omega_z d_\mathrm{v}/U")
+    Plots.plot!(xlabel=L"y",ylabel=L"z",colorbar_title=L"\omega_z")
     frame(animZSlice,Plots.plot!())
 
     close(JLDFile)
 
     if mod(iTime,ReportFreq) == 1
-        @printf("%6.2f%% (%5d/%5d) of files being processed.\n", iTime/NTime*100, iTime, NTime); flush(stdout)
+        @printf("%6.2f%% (%5d/%5d) of files have been processed.\n", iTime/NTime*100, iTime, NTime); flush(stdout)
     end
 end
 gif(animXSlice, computationID*"_"*"xSlice.gif", fps=frameRate)
@@ -326,31 +330,39 @@ effectiveRe = -ωeTMid./dkeTdt
 effectiveReS = -SeTMid./dkeTdt
 quantileRe = quantile(effectiveRe)
 quantileReS = quantile(effectiveReS)
-RelVOF = abs.((avgVOF.-avgVOF[1])/avgVOF[1]).+1e-20
+RelVOFFirstStep = abs.((avgVOF.-avgVOF[1])/avgVOF[1]).+1e-20
+RelVOFPrevStep = abs.((avgVOF[2:end].-avgVOF[1:end-1])/avgVOF[1]).+1e-20
+
+jldsave("JLD2/"*computationID*"_EnstrophyAndEnergy.jld2";trueTime, ens=ωeT, s=SeT, ener=keT)
+
+model = loess(midTrueTime, dωeTdt, span=0.1)
+dωeTdtSmooth = predict(model, midTrueTime)
 
 # Divergence and mass conservation
 Plots.plot()
-Plots.plot!(trueTime,avgDiv.+1e-20,label="Velocity Divergence" ,color=:red)
-Plots.plot!(trueTime,RelVOF,label="Mass loss",color=:blue)
+Plots.plot!(trueTime,avgDiv.+1e-20,label=L"\mathbf{\nabla\cdot u}" ,color=:red)
+Plots.plot!(trueTime,RelVOFFirstStep,label="Accumulated Mass loss",color=:blue)
+Plots.plot!(midTrueTime,RelVOFPrevStep,label="Mass loss (w.r.t. prev)",color=:blue)
 Plots.plot!(xlimit=timeLimit, ylimit=[1e-10,1],yaxis=:log10)
-Plots.plot!(xlabel=L"tU/d_\mathrm{v}")
+Plots.plot!(xlabel=L"t")
 Plots.savefig(computationID*"_MassDivergence.png")
 
 # Energy
 Plots.plot()
 Plots.plot!(trueTime,keT,color=:black,linestyle=:solid)
-Plots.plot!(xlimit=timeLimit,xlabel=L"tU/d_\mathrm{v}",ylabel=L"\textrm{Normalized Energy } (E)")
+Plots.plot!(xlimit=timeLimit,xlabel=L"t",ylabel=L"\textrm{Energy } (E)")
 Plots.savefig(computationID*"_Energy.png")
 
 # Enstrophy
-Plots.plot()
-Plots.plot!(trueTime,ωeT,legend=false,color=:black,linestyle=:solid)
-Plots.plot!(xlimit=timeLimit,xlabel=L"tU/d_\mathrm{v}",ylabel=L"\textrm{Normalized Enstrophy } (\mathcal{E})")
-Plots.savefig(computationID*"_Enstrophy.png")
-
-Plots.plot()
-Plots.plot!(midTrueTime,dωeTdt,legend=false,color=:black,linestyle=:solid)
-Plots.plot!(xlimit=timeLimit,xlabel=L"tU/d_\mathrm{v}",ylabel=L"\mathrm{d} \mathcal{E}/\mathrm{d} t")
+m = Plots.plot()
+p = Plots.twinx(m)
+Plots.plot!(p,trueTime,ωeT,legend=false,color=:grey,linestyle=:solid)
+Plots.plot!(m,midTrueTime,dωeTdtSmooth,legend=false,color=:blue,linestyle=:solid)
+Plots.hline!(m,[0],legend=false,color=:blue,linestyle=:dash,linewidth=1.2)
+Plots.plot!(m,xlimit=timeLimit,ylabel=L"\mathrm{d} \mathcal{E}/\mathrm{d} t")
+Plots.plot!(p,ylabel=L"\textrm{Enstrophy } (\mathcal{E})",xlabel="\n"*L"t")
+Plots.plot!(m,y_foreground_color_axis=:blue,y_foreground_color_text=:blue,y_foreground_color_border=:blue)
+Plots.plot!(p,y_foreground_color_axis=:grey,y_foreground_color_text=:grey,y_foreground_color_border=:grey)
 Plots.savefig(computationID*"_DiffEnstrophy.png")
 
 Plots.plot()
@@ -358,7 +370,7 @@ Plots.plot!(midTrueTime,effectiveRe,color=:black,linestyle=:solid)
 Plots.hline!(quantileRe[3:4],color=:blue,linestyle=:dash)
 Plots.hline!(quantileRe[2:2],color=:deepskyblue4,linestyle=:dash)
 Plots.plot!(title=@sprintf("Median Re: %.2f, 3rd quantile Re: %.2f", quantileRe[3], quantileRe[4]),titlefontsize=24,legend=false, ylimit=(0,5000))
-Plots.plot!(xlimit=timeLimit,xlabel=L"tU/d_\mathrm{v}",ylabel=L"Ud_\mathrm{v}/\nu_\mathrm{eff}")
+Plots.plot!(xlimit=timeLimit,xlabel=L"t",ylabel=L"\mathrm{Re}_\mathrm{eff} = Ud_\mathrm{v}/\nu_\mathrm{eff}")
 Plots.savefig(computationID*"_EffectiveRe.png")
 
 Plots.plot()
@@ -366,7 +378,7 @@ Plots.plot!(midTrueTime,effectiveReS,color=:black,linestyle=:solid)
 Plots.hline!(quantileReS[3:4],color=:blue,linestyle=:dash)
 Plots.hline!(quantileReS[2:2],color=:deepskyblue4,linestyle=:dash)
 Plots.plot!(title=@sprintf("Median Re: %.2f, 3rd quantile Re: %.2f", quantileReS[3], quantileReS[4]),titlefontsize=24,legend=false, ylimit=(0,5000))
-Plots.plot!(xlimit=timeLimit,xlabel=L"tU/d_\mathrm{v}",ylabel=L"Ud_\mathrm{v}/\nu_\mathrm{eff}")
+Plots.plot!(xlimit=timeLimit,xlabel=L"t",ylabel=L"\mathrm{Re}_\mathrm{eff} = Ud_\mathrm{v}/\nu_\mathrm{eff}")
 Plots.savefig(computationID*"_EffectiveReS.png")
 
 # Check Poisson solver
