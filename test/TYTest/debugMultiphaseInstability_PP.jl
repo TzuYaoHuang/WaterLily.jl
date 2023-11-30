@@ -2,7 +2,7 @@ JLDFilePath = @__FILE__
 workdir = dirname(JLDFilePath)
 waterlilypath = dirname(dirname(workdir))*"/src/WaterLily.jl"
 include(waterlilypath)
-WaterLily = Main.WaterLily;
+using .WaterLily
 
 using Printf
 using JLD2
@@ -37,9 +37,7 @@ Return a CartesianIndex of dimension `N` which is one at index `i` and zero else
 
 # SUPPORTED functions
 function CalculateDivergence!(storage,u,R)
-    for I ∈ R
-        storage[I] = WaterLily.div(I,u)
-    end
+    WaterLily.@loop storage[I] = WaterLily.div(I,u) over I∈R
 end
 
 function CalculateMeanScalar(f;func=(x)->x,R=inside(f))
@@ -97,9 +95,7 @@ function E(fun,u,f,λρ)
 end
 
 function ComputeVorticity!(vortVec, u, R)
-    for I∈R 
-        vortVec[I,:] = WaterLily.ω(I,u)
-    end
+    WaterLily.@loop vortVec[I,:] = WaterLily.ω(I,u) over I∈R
     WaterLily.BCPerVec!(vortVec)
 end
 
@@ -144,12 +140,12 @@ function ComputeMeanU!(uCyl, uMeanRadial, uMeanAzimuthal, uMeanAxial, rMat, rGau
 end
 
 # CASE configuration
-N = 128
-q = 1.0
+N = 192
+q = 1.00
 disturb = 0.1
 VOFdisturb = 0.0
 m = 0
-Axialq = 0.0
+Axialq = 1.0
 computationID =  @sprintf("3DVBSmooth_N%d_m%d_q%.2f_qA%.2f_Urdis%.2f_VOFdis%.2f",N,m,q,Axialq,disturb,VOFdisturb)
 println("You are now processing: "*computationID); flush(stdout)
 
@@ -231,7 +227,7 @@ normalStorage = zeros((N+2,N+2,N+2,3))
 inteceStorage = zeros((N+2,N+2,N+2))
 
 # ANIMATION
-frameRate = 40
+frameRate = 80
 
 animXSlice = Animation()
 animZSlice = Animation()
@@ -253,16 +249,13 @@ animZSlice = Animation()
     Se[iTime] =  E(SeI,VelocityStore,VOFStore,λρ)
     
 
-    if false #&& ((iTime-1)%4==0)
-        StaggerToCollocateVel!(VelocityStore, VelocityAtCollocated)
-        # for I ∈ inside(λ2Store)
-        #     λ2Store[I] = WaterLily.λ₂(I,VelocityStore)*LScale^2
-        # end
-        vtk_grid("VTK/"*computationID*"VelVOF_"*string(iTime-1)*".vti", xcen[2:end-1], xcen[2:end-1], xcen[2:end-1]) do vtk
-            vtk["VOF"] = @views VOFStore[inside(VOFStore)]
+    if true #&& ((iTime-1)%4==0)
+        WaterLily.@loop λ2Store[I] = WaterLily.λ₂(I,VelocityStore)*LScale^2 over I∈inside(λ2Store)
+        WaterLily.BCPer!(λ2Store)
+        vtk_grid("VTK/"*computationID*"VelVOF_"*string(iTime-1)*".vti", xcen, xcen, xcen) do vtk
+            vtk["VOF"] = VOFStore
             # vtk["Vel"] = @views (VelocityStore[inside(VOFStore),1],VelocityStore[inside(VOFStore),2],VelocityStore[inside(VOFStore),3])
-            # vtk["l2"] = @views λ2Store[inside(λ2Store)]
-            vtk["Vel"] = permutedims(VelocityAtCollocated,(4,1,2,3))
+            vtk["l2"] = λ2Store
         end
     end
 
@@ -380,6 +373,13 @@ Plots.hline!(quantileReS[2:2],color=:deepskyblue4,linestyle=:dash)
 Plots.plot!(title=@sprintf("Median Re: %.2f, 3rd quantile Re: %.2f", quantileReS[3], quantileReS[4]),titlefontsize=24,legend=false, ylimit=(0,5000))
 Plots.plot!(xlimit=timeLimit,xlabel=L"t",ylabel=L"\mathrm{Re}_\mathrm{eff} = Ud_\mathrm{v}/\nu_\mathrm{eff}")
 Plots.savefig(computationID*"_EffectiveReS.png")
+
+m = Plots.plot()
+Plots.plot!(m,midTrueTime,dωeTdtSmooth,legend=false,color=:blue,linestyle=:solid)
+Plots.hline!(m,[0],legend=false,color=:blue,linestyle=:dash,linewidth=1.2)
+Plots.plot!(m,xlimit=timeLimit,xlabel=L"t",ylabel=L"\mathrm{d} \mathcal{E}/\mathrm{d} t")
+# Plots.plot!(m,y_foreground_color_axis=:blue,y_foreground_color_text=:blue,y_foreground_color_border=:blue)
+Plots.savefig(computationID*"_DiffEnstrophyOnly.png")
 
 # Check Poisson solver
 Plots.plot()

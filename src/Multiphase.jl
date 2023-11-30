@@ -104,7 +104,7 @@ function SmoothVelocity!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,oldp
     vof_smooth!(0, c.f, c.fᶠ, c.α;perdir=c.perdir)
     SmoothVelocity!(a.u,c.fᶠ,c.n̂,c.λρ)
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
-    vof_smooth!(2, c.f, c.fᶠ, c.α;perdir=c.perdir)
+    # vof_smooth!(2, c.f, c.fᶠ, c.α;perdir=c.perdir)
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
     calculateL!(a,c)
     update!(b)
@@ -116,6 +116,8 @@ function SmoothVelocity!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,oldp
     diver = max(maximum(@views a.σ[inside(a.p)]),-minimum(@views a.σ[inside(a.p)]))
     @printf("Smoothed velocity: ∇⋅u = %.6e, nPois = %2d, res0 = %.6e, res = %.6e\n", diver, b.n[end], b.res0[end], b.res[end])
     pop!(b.res); pop!(b.res0); pop!(b.n)
+    pop!(a.Δt)
+    push!(a.Δt,min(CFL(a,c),1.1a.Δt[end]))
 end
 function SmoothVelocity!(u::AbstractArray{T,dv}, f::AbstractArray{T,d}, buffer::AbstractArray{T,dv},λρ) where {T,d,dv}
     buffer .= 0
