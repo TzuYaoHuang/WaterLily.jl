@@ -1,23 +1,23 @@
 .ipynb_checkpoints
+.vscode/
+.DS_Store
+Manifest.toml
+/docs/build/
+
+# gfx
 *.png
 *.gif
 *.mp4
 *.svg
-*.dat
 *.pdf
-*.vti
-*.pvd
-Manifest.toml
-/docs/build/
-.vscode/
-*.jld*
-.DS_Store
+*.ogv
+
+# data file
+*.dat
 *.txt
-lotus_oop-master/*
-*.log
-slurm*
-*.sh*
-*#
+*.jld*
+
+# paraview
 *.vti
 *.vtr
 *.vts
@@ -26,6 +26,13 @@ slurm*
 *.vtm
 *.pvd
 *.pvt*
-*.ogv
+
+# on supercomputer
+*.log
+slurm*
+*.sh*
+*#
+
+# for me
 *play*
 oldTest/
