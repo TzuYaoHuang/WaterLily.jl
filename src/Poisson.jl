@@ -53,21 +53,6 @@ update!(p::Poisson) = set_diag!(p.D,p.iD,p.L)
     end
     return s
 end
-@fastmath @inline function multL(I::CartesianIndex{d},L,x) where {d}
-    s = zero(eltype(L))
-    for i in 1:d
-        s += @inbounds(x[I-δ(i,I)]*L[I,i])
-    end
-    return s
-end
-@fastmath @inline function multU(I::CartesianIndex{d},L,x) where {d}
-    s = zero(eltype(L))
-    for i in 1:d
-        s += @inbounds(x[I+δ(i,I)]*L[I+δ(i,I),i])
-    end
-    return s
-end
-@fastmath @inline mult(I,L,D,x) = @inbounds(x[I]*D[I])+multL(I,L,x)+multU(I,L,x)
 
 """
     mult!(p::Poisson,x)
@@ -80,6 +65,13 @@ function mult!(p::Poisson,x)
     fill!(p.z,0)
     @inside p.z[I] = mult(I,p.L,p.D,x)
     return p.z
+end
+@fastmath @inline function mult(I::CartesianIndex{d},L,D,x) where {d}
+    s = @inbounds(x[I]*D[I])
+    for i in 1:d
+        s += @inbounds(x[I-δ(i,I)]*L[I,i]+x[I+δ(i,I)]*L[I+δ(i,I),i])
+    end
+    return s
 end
 
 residual!(p::Poisson) = @inside p.r[I] = p.z[I]-mult(I,p.L,p.D,p.x)
@@ -94,7 +86,7 @@ Note: This runs for general backends, but is _very_ slow to converge.
 """
 @fastmath Jacobi!(p;it=1) = for _ ∈ 1:it
     @inside p.ϵ[I] = p.r[I]*p.iD[I]
-    BCPerNeu!(p.ϵ,perdir=p.perdir)
+    BC!(p.ϵ;perdir=p.perdir)
     increment!(p)
 end
 
@@ -113,7 +105,7 @@ function pcg!(p::Poisson;it=6)
     rho = r ⋅ z
     abs(rho)<1e-12 && return
     for i in 1:it
-        BCPerNeu!(ϵ,perdir=p.perdir)
+        BC!(ϵ;perdir=p.perdir)
         @inside z[I] = mult(I,p.L,p.D,ϵ)
         alpha = rho/(z[insideI]⋅ϵ[insideI])
         @loop (x[I] += alpha*ϵ[I];
@@ -128,7 +120,6 @@ function pcg!(p::Poisson;it=6)
     end
 end
 smooth!(p) = pcg!(p)
-# smooth!(p) = get_backend(p.r)==CPU() ? SOR!(p,it=3) : Jacobi!(p,it=20)
 
 L₂(p::Poisson) = p.r ⋅ p.r # special method since outside(p.r)≡0
 
@@ -146,7 +137,7 @@ Approximate iterative solver for the Poisson matrix equation `Ax=b`.
   - `itmx`: Maximum number of iterations.
 """
 function solver!(p::Poisson;log=false,tol=1e-4,itmx=1e3)
-    BCPerNeu!(p.x,perdir=p.perdir)
+    BC!(p.x;perdir=p.perdir)
     residual!(p); r₂ = L₂(p)
     push!(p.res0,r₂)
     log && (res = [r₂])
@@ -156,7 +147,7 @@ function solver!(p::Poisson;log=false,tol=1e-4,itmx=1e3)
         log && push!(res,r₂)
         nᵖ+=1
     end
-    BCPerNeu!(p.x,perdir=p.perdir)
+    BC!(p.x;perdir=p.perdir)
     push!(p.n,nᵖ)
     push!(p.res,r₂)
     log && return res

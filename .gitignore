@@ -5,6 +5,8 @@
 *.svg
 *.dat
 *.pdf
+*.vti
+*.pvd
 Manifest.toml
 /docs/build/
 .vscode/

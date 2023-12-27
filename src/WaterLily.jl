@@ -62,33 +62,11 @@ struct Simulation <: AbstractSimulation
     pois :: AbstractPoisson
     function Simulation(dims::NTuple{N}, u_BC::NTuple{N}, L::Number;
                         Δt=0.25, ν=0., U=√sum(abs2,u_BC), ϵ=1, perdir=(0,),
-                        uλ::Function=(i,x)->u_BC[i],
+                        uλ::Function=(i,x)->u_BC[i], exitBC=false,
                         body::AbstractBody=NoBody(),T=Float32,mem=Array) where N
-        flow = Flow(dims,u_BC;uλ,Δt,ν,T,f=mem,perdir=perdir)
-        measure!(flow,body;ϵ,perdir=perdir)
-        new(U,L,ϵ,flow,body,MultiLevelPoisson(flow.p,flow.μ₀,flow.σ;perdir=perdir))
-    end
-end
-
-struct TwoPhaseSimulation <: AbstractSimulation
-    U :: Number # velocity scale
-    L :: Number # length scale
-    ϵ :: Number # kernel width
-    flow :: Flow
-    inter:: cVOF
-    body :: AbstractBody
-    pois :: AbstractPoisson
-    function TwoPhaseSimulation(
-                        dims::NTuple{N}, u_BC::NTuple{N}, L::Number;
-                        Δt=0.25, ν=0.,λμ=0.0180989244,λρ=0.001206, U=√sum(abs2,u_BC), ϵ=1, 
-                        perdir=(0,), dirdir=(0,), grav=ntuple(i->0,N),
-                        uλ::Function=(i,x)->u_BC[i], 
-                        InterfaceSDF::Function=(x) -> -5-x[1],
-                        body::AbstractBody=NoBody(),T=Float32,mem=Array) where N
-        flow = Flow(dims,u_BC;uλ,Δt,ν,T,f=mem,perdir=perdir,g=grav)
-        inter= cVOF(dims,flow.f,flow.σ; arr=mem, InterfaceSDF=InterfaceSDF, T=T, perdir=flow.perdir, dirdir=dirdir,λμ=λμ,λρ=λρ)
-        measure!(flow,body;ϵ,perdir=perdir)
-        new(U,L,ϵ,flow,inter,body,MultiLevelPoisson(flow.p,flow.μ₀,flow.σ;perdir=perdir))
+        flow = Flow(dims,u_BC;uλ,Δt,ν,T,f=mem,perdir,exitBC)
+        measure!(flow,body;ϵ)
+        new(U,L,ϵ,flow,body,MultiLevelPoisson(flow.p,flow.μ₀,flow.σ;perdir))
     end
 end
 
@@ -143,4 +121,8 @@ function measure!(sim::Simulation,t=time(sim))
 end
 
 export Simulation,TwoPhaseSimulation,sim_step!,sim_time,measure!,@inside,inside
+
+include("vtkWriter.jl")
+export vtkWriter,write!,close
+
 end # module

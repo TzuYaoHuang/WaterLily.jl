@@ -49,9 +49,8 @@ function measure!(a::Flow{N,T},body::AbstractBody;t=T(0),ϵ=1,perdir=(0,)) where
         end
     end
     @loop fill!(a.μ₀,a.μ₁,a.V,a.σᵥ,a.σ,I) over I ∈ inside(a.p)
-    BCVecPerNeu!(a.μ₀,Dirichlet=false, A=zeros(SVector{N,T}),perdir=perdir)  # add BC care for periodic & neu for μ₀
-    BCVecPerNeu!(a.V,perdir=perdir)  # add BC care for periodic & neu for body velocity, which is the most important step
-
+    BC!(a.μ₀,zeros(SVector{N,T}),a.exitBC,a.perdir) # BC on μ₀, don't fill normal component yet
+    BC!(a.V ,zeros(SVector{N,T}),a.exitBC,a.perdir)
     @inside a.σᵥ[I] = a.σᵥ[I]*div(I,a.V) # scaled divergence
     correct_div!(a.σᵥ)
 end
