@@ -25,3 +25,5 @@ slurm*
 *.pvd
 *.pvt*
 *.ogv
+*play*
+oldTest/

@@ -8,10 +8,8 @@ Plots.scalefontsizes()
 default(fontfamily="Palatino",linewidth=2, framestyle=:axes, label=nothing, grid=false, tick_dir=:out, size=(900,700),right_margin=5mm,left_margin=5mm,top_margin=5mm,bottom_margin=5mm)
 Plots.scalefontsizes(2.1)
 
-include("../../src/WaterLily.jl")
-using .WaterLily
 
-function return2Points(f,α,n̂;offset=[0 0])
+function return2Points(f,α,n̂;offset=[0 0],scale=1)
     xy = @SMatrix [0 0; 1 0; 1 1; 0 1; 0 0]
     intercept = zeros(5)
     for i ∈ 1:4
@@ -32,10 +30,10 @@ function return2Points(f,α,n̂;offset=[0 0])
             (ipt<=2) && (pt[ipt,:] .+= (nex*xy[i,:]+cur*xy[i+1,:])/(cur+nex))
         end
     end
-    return ipt, pt, intercept
+    return ipt, pt*scale, intercept*scale
 end
 
-function plotgVOF!(plt, f,α,n̂;offset=[0 0],interPointSize=1, gridPointSize=4,interLineWidth=2,interColor=[:blue, :grey])
+function plotgVOF!(plt, f,α,n̂;offset=[0 0],interPointSize=1, gridPointSize=4,interLineWidth=2,interColor=[:blue, :grey],scale=1)
     xy = [0 0; 1 0; 1 1; 0 1] .+ offset
     # if f==0
     #     Plots.plot!(plt, xy[:,1], xy[:,2],
@@ -60,7 +58,7 @@ function plotgVOF!(plt, f,α,n̂;offset=[0 0],interPointSize=1, gridPointSize=4,
     #         markerstrokecolor = interColor[1],label=false
     #     )
     if f>0 && f<1
-        ipt, pt, intercept = return2Points(f,α,n̂;offset)
+        ipt, pt, intercept = return2Points(f,α,n̂;offset,scale)
         Plots.plot!(plt, pt[:,1], pt[:,2],
             seriestype=:path,
             linestyle=:solid,
@@ -88,17 +86,19 @@ function plotgVOF!(plt, f,α,n̂;offset=[0 0],interPointSize=1, gridPointSize=4,
     Plots.plot!(aspect_ratio=:equal)
 end
 
-function plotAllgVOF!(plt, f,α,n̂)
+function plotAllgVOF!(plt, f,α,n̂;offset=[0 0],scale=1)
     NN = size(f)
-    N = NN[1]-2
+    Nx,Ny = @. NN - 2
     for I∈WaterLily.inside(f)
-        plotgVOF!(plt, f[I],α[I],n̂[I,:];offset=[I.I[1]-2 I.I[2]-2])
+        plotgVOF!(plt, f[I],α[I],n̂[I,:];offset=[I.I[1]-2 I.I[2]-2].+offset,scale=scale)
     end
-    for i∈0:N
-        Plots.plot!(plt,[0,N],[i,i],lw=1,color=:grey,label="")
-        Plots.plot!(plt,[i,i],[0,N],lw=1,color=:grey,label="")
+    for i∈0:Nx
+        Plots.plot!(plt,([i,i].+offset[1])*scale,([0,Ny].+offset[2])*scale,lw=1,color=:grey,label="")
     end
-    Plots.plot!(xlimit=[0,N],ylimit=[0,N])
+    for i∈0:Ny
+        Plots.plot!(plt,([0,Nx].+offset[1])*scale,([i,i].+offset[2])*scale,lw=1,color=:grey,label="")
+    end
+    Plots.plot!(xlimit=([0,Nx].+offset[1])*scale,ylimit=([0,Ny].+offset[2])*scale)
 end
 
 function generateNormalInterFromF!(f,α,n̂)
@@ -122,7 +122,7 @@ function main()
     display(n̂[:,:,2])
 
     plt = Plots.plot()
-    plotAllgVOF!(plt,f,α,n̂)
+    plotAllgVOF!(plt,f,α,n̂;offset=[10 10], scale=1/20)
     Plots.savefig("testVOF.png")
 
 end
