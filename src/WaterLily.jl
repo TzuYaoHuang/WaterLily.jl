@@ -88,7 +88,6 @@ struct TwoPhaseSimulation <: AbstractSimulation
         flow = Flow(dims,u_BC;uλ,Δt,ν,T,f=mem,perdir=perdir,g=grav)
         inter= cVOF(dims,flow.f,flow.σ; arr=mem, InterfaceSDF=InterfaceSDF, T=T, perdir=flow.perdir, dirdir=dirdir,λμ=λμ,λρ=λρ)
         measure!(flow,body;ϵ,perdir=perdir)
-        # calculateL!(flow,inter)
         new(U,L,ϵ,flow,inter,body,MultiLevelPoisson(flow.p,flow.μ₀,flow.σ;perdir=perdir))
     end
 end
@@ -126,7 +125,7 @@ function sim_step!(sim::TwoPhaseSimulation,t_end;verbose=false,remeasure=true,sm
     while t < t_end*sim.L/sim.U
         remeasure && measure!(sim,t)
         mom_step!(sim.flow,sim.pois,sim.inter,sim.body) # evolve Flow
-        (length(sim.flow.Δt)%smoothStep==0) && SmoothVelocity!(sim.flow,sim.pois,sim.inter,sim.body,oldPStorage)
+        (length(sim.flow.Δt)%smoothStep==0) && smoothVelocity!(sim.flow,sim.pois,sim.inter,sim.body,oldPStorage)
         t += sim.flow.Δt[end]
         verbose && println("tU/L=",round(t*sim.U/sim.L,digits=4),
             ", Δt=",round(sim.flow.Δt[end],digits=3))

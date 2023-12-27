@@ -20,6 +20,16 @@ ke(I::CartesianIndex{m},u,U=fSV(zero,m)) where m = 0.125fsum(m) do i
     abs2(@inbounds(u[I,i]+u[I+δ(i,I),i]-2U[i]))
 end
 """
+    ρkeI(I::CartesianIndex,u,U=0)
+
+Compute ``½∥𝐮-𝐔∥²`` at center of cell `I` where `U` can be used
+to subtract a background flow (by default, `U=0`).
+This function take multiphase into account so as the staggered arragement.
+"""
+ρkeI(I::CartesianIndex{D},u,f,λρ,U=fSV(zero,D)) where D = 0.25fsum(D) do i
+    ((u[I,i]-U[i])^2+(u[I+δ(i,I),i]-U[i])^2)*(f[I]*(1-λρ) + λρ)
+end
+"""
     ∂(i,j,I,u)
 
 Compute ``∂uᵢ/∂xⱼ`` at center of cell `I`. Cross terms are computed
@@ -91,16 +101,4 @@ nds!(a,body,t=0) = apply!(a) do i,x
     d = body.sdf(x,t)
     n = ForwardDiff.gradient(y -> body.sdf(y,t), x)
     n[i]*WaterLily.kern(clamp(d,-1,1))
-end
-
-function Γ(u::AbstractArray{T}, dims:: Tuple) where {T}
-    s = zero(T)
-    N,n = size_u(u)
-    s = (
-        sum(u[2:end-1,1:2,1])+sum(u[3:end,1:2,1]) - 
-        sum(u[2:end-1,end-1:end,1])-sum(u[3:end,end-1:end,1]) -
-        sum(u[1:2,2:end-1,2])-sum(u[1:2,3:end,2]) +
-        sum(u[end-1:end,2:end-1,2])+sum(u[end-1:end,3:end,2]) 
-    )/4
-    return s
 end

@@ -1,60 +1,73 @@
 using ForwardDiff
 using Printf
+using JLD2
+using Combinatorics
 
-boxAroundI(I::CartesianIndex) = (I-oneunit(I)):(I+oneunit(I))
 
+"""
+    cVOF{D::Int, T::Float, Sf<:AbstractArray{T,D}, Vf<:AbstractArray{T,D+1}}
+
+Composite type for 2D or 3D two-phase advection scheme.
+
+The heavy fluid is advected using operator-split conservative volume-of-fluid method proposed by [Weymouth & Yue (2010)](https://doi.org/10.1016/j.jcp.2009.12.018).
+This guarentees mass conservation and preserves sharp interface across fluids.
+The primary variable is the volume fraction of the heavy fluid, the cell-averaged color function, `f`. 
+We use it to reconstruct sharp interface.
+"""
 struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
-    f⁰:: Sf  # cell-averaged color function, because Heun Correction step
-    f :: Sf  # cell-averaged color function
-    fᶠ:: Sf  # place to store flux or smoothed vof
-    n̂ :: Vf  # norm of the surfaces in cell
+    f :: Sf  # cell-averaged color function (volume fraction field, VOF)
+    f⁰:: Sf  # cell-averaged color function. Need to store it because Heun Correction step
+    fᶠ:: Sf  # place to store flux or smoothed VOF
+    n̂ :: Vf  # normal vector of the surfaces in cell
     α :: Sf  # intercept of intercace in cell: norm ⋅ x = α
-    c̄ :: AbstractArray{Int8}  # color function
+    c̄ :: AbstractArray{Int8}  # color function at the cell center
     perdir :: NTuple  # periodic directions
     dirdir :: NTuple  # Dirichlet directions
-    λμ:: T   # ratio of dynamic viscosity
-    λρ:: T   # ratio of density
-    function cVOF(N::NTuple{D}, n̂place, αplace; arr=Array, InterfaceSDF::Function=(x) -> 5-x[1], T=Float64, perdir=(0,), dirdir=(0,),λμ=0.0180989244,λρ=0.001206) where D
-        Ng = N .+ 2
-        Nd = (Ng..., D)
+    λρ :: T   # ratio of density (air/water)
+    λμ :: T   # ratio of dynamic viscosity (air/water)
+    ke ::Vector{T}
+    strang :: Vector{Int}
+    function cVOF(N::NTuple{D}, n̂place, αplace; arr=Array, InterfaceSDF::Function=(x) -> 5-x[1], T=Float64, perdir=(0,), dirdir=(0,),λμ=1e-2,λρ=1e-3) where D
+        Ng = N .+ 2  # scalar field size
+        Nd = (Ng..., D)  # vector field size
         f = ones(T, Ng) |> arr
         fᶠ = copy(f)
         n̂ = n̂place; α = αplace
         c̄ = zeros(Int8, Ng) |> arr
-        applyVOF!(f,α,n̂,InterfaceSDF)
+        applyVOF!(f,α,InterfaceSDF)
         BCVOF!(f,α,n̂;perdir=perdir,dirdir=dirdir)
         f⁰ = copy(f)
-        vof_smooth!(4, f, fᶠ, α;perdir=perdir)
-        new{D,T,typeof(f),typeof(n̂)}(f⁰,f,fᶠ,n̂,α,c̄,perdir,dirdir,λμ,λρ)
+        smoothVOF!(0, f, fᶠ, α;perdir=perdir)
+        new{D,T,typeof(f),typeof(n̂)}(f,f⁰,fᶠ,n̂,α,c̄,perdir,dirdir,λρ,λμ,[],[0])
     end
 end
 
 """
-    applyVOF!(f,α,n̂,FreeSurfsdf)
+    applyVOF!(f,α,FreeSurfsdf)
 
-Given a distance function (FreeSurfsdf) for the initial free-surface, yield the volume fraction (f), intercept (α), normal (n̂)
+Given a distance function (FreeSurfsdf) for the initial free-surface, yield the volume fraction field (`f`)
 """
-function applyVOF!(f,α,n̂,FreeSurfsdf)
-    tol = 10eps(eltype(f))
-    N,n = size_u(n̂)
-    @loop applyVOF!(f,α,n̂,FreeSurfsdf,n,I) over I ∈ inside(f)
+function applyVOF!(f::AbstractArray{T,D},α::AbstractArray{T,D},FreeSurfsdf::Function) where {T,D}
+    tol = 10eps(T)  # tolerance for the Floating points
+
+    # set up the field
+    @loop applyVOF!(f,α,FreeSurfsdf,I) over I ∈ inside(f)
+
+    # Clear wasps in the flow
     @loop f[I] = f[I] <= tol ? 0.0 : f[I] over I ∈ inside(f)
     @loop f[I] = f[I] >= 1-tol ? 1.0 : f[I] over I ∈ inside(f)
 end
-function applyVOF!(f,α,n̂,FreeSurfsdf,n,I)
-    α[I] = FreeSurfsdf(loc(0,I));
-    if abs2(α[I])>n/4 
-        f[I] = α[I]>0 ? 0 : 1
-    else
-        # nhat = ForwardDiff.gradient(FreeSurfsdf,loc(0,I));
-        # nhat /= sqrt(sum(nhat.^2));
-        # f[I] = vof_vol(nhat,-α[I]);
-        f[I] = (√n/2 - α[I])/(√n)
-    end
+function applyVOF!(f::AbstractArray{T,D},α::AbstractArray{T,D},FreeSurfsdf::Function,I::CartesianIndex{D}) where {T,D}
+    α[I] = FreeSurfsdf(loc(0,I))  # the coordinate of the cell center
+    f[I] = clamp((√D/2 - α[I])/(√D),0,1)  # convert distance to volume fraction assume `n̂ = (1,1,...)` 
 end
 
 
+"""
+    BCVOF!(f,α,n̂)
 
+Apply boundary condition to volume fraction, intercept, and normal with Neumann or Periodic ways
+"""
 function BCVOF!(f,α,n̂;perdir=(0,),dirdir=(0,))
     N,n = size_u(n̂)
     for j ∈ 1:n
@@ -76,16 +89,15 @@ function BCVOF!(f,α,n̂;perdir=(0,),dirdir=(0,))
 end
 
 
-
 """
-    vof_smooth!(itm, f, sf)
+    smoothVOF!(itm, f, sf)
 
 Smooth the cell-centered VOF field with moving average technique.
 itm: smooth steps
 f: befor smooth
 sf: after smooth
 """
-function vof_smooth!(itm, f::AbstractArray{T,d}, sf::AbstractArray{T,d}, rf::AbstractArray{T,d};perdir=(0,)) where {T,d}
+function smoothVOF!(itm, f::AbstractArray{T,d}, sf::AbstractArray{T,d}, rf::AbstractArray{T,d};perdir=(0,)) where {T,d}
     (itm!=0)&&(rf .= f)
     for it ∈ 1:itm
         sf .= 0
@@ -99,34 +111,49 @@ function vof_smooth!(itm, f::AbstractArray{T,d}, sf::AbstractArray{T,d}, rf::Abs
     (itm==0)&&(sf .= f)
 end
 
-function SmoothVelocity!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,oldp)
-    oldp .= a.p
-    vof_smooth!(0, c.f, c.fᶠ, c.α;perdir=c.perdir)
-    SmoothVelocity!(a.u,c.fᶠ,c.n̂,c.λρ)
+
+"""
+    smoothVelocity!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,oldp)
+
+Smooth the velocity with top hat filter base on algorithm proposed by [Fu et al. (2010)](https://arxiv.org/abs/1410.1818), as the shear velocity is not well-resolved across fluid interface. 
+We smooth the area where air dominates (α≤0.5, I suppose there is typo in eq. (1)). 
+Note that we need an additional `oldp` variable to store the old pressure field in order to avoid the potential field here messing up with the old one.
+"""
+function smoothVelocity!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,oldp)
+    oldp .= a.p; a.p .= 0
+
+    # smooth velocity field base on the (smoothed) VOF field
+    smoothVOF!(0, c.f, c.fᶠ, c.α;perdir=c.perdir)
+    smoothVelocity!(a.u,c.fᶠ,c.n̂,c.λρ)
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
-    # vof_smooth!(2, c.f, c.fᶠ, c.α;perdir=c.perdir)
+
+    # update the poisson solver and project the smoothed velcity field into the solenoidal velocity field
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
     calculateL!(a,c)
     update!(b)
-    a.p .= 0
     project!(a,b);
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
+
     a.p .= oldp
+
+    # reporting routine
     @loop a.σ[I] = div(I,a.u) over I ∈ inside(a.p)
     diver = max(maximum(@views a.σ[inside(a.p)]),-minimum(@views a.σ[inside(a.p)]))
     @printf("Smoothed velocity: ∇⋅u = %.6e, nPois = %2d, res0 = %.6e, res = %.6e\n", diver, b.n[end], b.res0[end], b.res[end])
+
+    # remove footprint from the general logging
     pop!(b.res); pop!(b.res0); pop!(b.n)
     pop!(a.Δt)
     push!(a.Δt,min(CFL(a,c),1.1a.Δt[end]))
 end
-function SmoothVelocity!(u::AbstractArray{T,dv}, f::AbstractArray{T,d}, buffer::AbstractArray{T,dv},λρ) where {T,d,dv}
+function smoothVelocity!(u::AbstractArray{T,dv}, f::AbstractArray{T,d}, buffer::AbstractArray{T,dv},λρ) where {T,d,dv}
     buffer .= 0
     for i∈1:d
-        @loop SmoothVelocity!(u,f,buffer,λρ,i,I) over I ∈ inside(f)
+        @loop smoothVelocity!(u,f,buffer,λρ,i,I) over I ∈ inside(f)
     end
     u .= buffer
 end
-function SmoothVelocity!(u::AbstractArray{T,dv}, f::AbstractArray{T,d}, buffer::AbstractArray{T,dv},λρ,i,I) where {T,d,dv}
+function smoothVelocity!(u::AbstractArray{T,dv}, f::AbstractArray{T,d}, buffer::AbstractArray{T,dv},λρ,i,I) where {T,d,dv}
     fM = ϕ(i,I,f)
     if fM<=0.5
         a = zero(eltype(u))
@@ -141,22 +168,70 @@ function SmoothVelocity!(u::AbstractArray{T,dv}, f::AbstractArray{T,d}, buffer::
     end
 end
 
+
 """
-    f3(m1, m2, m3, a)
+    getIntercept(v, g)
+Calculate intersection from volume fraction.
+These functions prepare `n̂` and `g` for `f2α`.
+Following algorithm proposed by [Scardovelli & Zaleski (2000)](https://doi.org/10.1006/jcph.2000.6567).
+"""
+getIntercept(v::AbstractArray{T,1}, g) where T = (
+    length(v)==2 ?
+    getIntercept(v[1], v[2], zero(T), g) :
+    getIntercept(v[1], v[2], v[3], g)
+)
+function getIntercept(n1, n2, n3, g)
+    t = abs(n1) + abs(n2) + abs(n3)
+    if g != 0.5
+        m1, m2, m3 = sort3(abs(n1)/t, abs(n2)/t, abs(n3)/t)
+        a = f2α(m1, m2, m3, ifelse(g < 0.5, g, 1.0 - g))
+    else
+        a = 0.5
+    end
+    return ifelse(g < 0.5, a, 1.0 - a)*t + min(n1, 0.0) + min(n2, 0.0) + min(n3, 0.0)
+end
+
+
+"""
+    getVolumeFraction(v, b)
+Calculate intersection from volume fraction.
+These functions prepare `n̂` and `b` for `α2f`.
+Following algorithm proposed by [Scardovelli & Zaleski (2000)](https://doi.org/10.1006/jcph.2000.6567).
+"""
+getVolumeFraction(v::AbstractArray{T,1}, b) where T = (
+    length(v)==2 ?
+    getVolumeFraction(v[1], v[2], zero(T), b) :
+    getVolumeFraction(v[1], v[2], v[3], b)
+)
+function getVolumeFraction(n1, n2, n3, b)
+    t = abs(n1) + abs(n2) + abs(n3)
+    a = (b - min(n1, 0.0) - min(n2, 0.0) - min(n3, 0.0))/t
+
+    if a <= 0.0 || a == 0.5 || a >= 1.0
+        return min(max(a, 0.0), 1.0)
+    else
+        m1, m2, m3 = sort3(abs(n1)/t, abs(n2)/t, abs(n3)/t)
+        t = α2f(m1, m2, m3, ifelse(a < 0.5, a, 1.0 - a))
+        return ifelse(a < 0.5, t, 1.0 - t)
+    end
+end
+
+
+"""
+    α2f(m1, m2, m3, a)
 
 Three-Dimensional Forward Problem.
 Get volume fraction from intersection.
+This is restricted to (1) 3D, (2) n̂ᵢ ≥ 0 ∀ i, (3) ∑ᵢ n̂ᵢ = 1, (4) a < 0.5.
+Following algorithm proposed by [Scardovelli & Zaleski (2000)](https://doi.org/10.1006/jcph.2000.6567).
 """
-function f3(m1, m2, m3, a)
-    tol = eps(typeof(m1))
-    m1 += tol
-    m2 += tol
+function α2f(m1, m2, m3, a)
     m12 = m1 + m2
 
     if a < m1
         f3 = a^3/(6.0*m1*m2*m3)
     elseif a < m2
-        f3 = a*(a - m1)/(2.0*m2*m3) + m1^2/(6.0*m2*m3)
+        f3 = a*(a - m1)/(2.0*m2*m3) + ifelse(m2 == 0.0, 1.0, m1 / m2) * (m1 / (6.0 * m3))  # change proposed by Kelli Hendricson to avoid the divided by zero issue
     elseif a < min(m3, m12)
         f3 = (a^2*(3.0*m12 - a) + m1^2*(m1 - 3.0*a) + m2^2*(m2 - 3.0*a))/(6*m1*m2*m3)
     elseif m3 < m12
@@ -168,48 +243,21 @@ function f3(m1, m2, m3, a)
     return f3
 end
 
-function proot(c0, c1, c2, c3)
-    a0 = c0/c3
-    a1 = c1/c3
-    a2 = c2/c3
 
-    p0 = a1/3.0 - a2^2/9.0
-    q0 = (a1*a2 - 3.0*a0)/6.0 - a2^3/27.0
-    a = q0/sqrt(-p0^3)
-    t = acos(abs2(a)<=1 ? a : 0)/3.0
-
-    proot = sqrt(-p0)*(sqrt(3.0)*sin(t) - cos(t)) - a2/3.0
-
-    return proot
-end
 
 """
-    sort3(a, b, c)
-
-Sort three numbers with bubble sort algorithm to avoid too much memory assignment due to array creation.
-see https://codereview.stackexchange.com/a/91920
-"""
-function sort3(a, b, c)
-    if (a>c) a,c = c,a end
-    if (a>b) a,b = b,a end
-    if (b>c) b,c = c,b end
-    return a,b,c
-end
-
-"""
-    a3(m1, m2, m3, v)
+    f2α(m1, m2, m3, v)
 
 Three-Dimensional Inverse Problem.
 Get intercept with volume fraction.
+This is restricted to (1) 3D, (2) n̂ᵢ ≥ 0 ∀ i, (3) ∑ᵢ n̂ᵢ = 1, (4) v < 0.5.
+Following algorithm proposed by [Scardovelli & Zaleski (2000)](https://doi.org/10.1006/jcph.2000.6567).
 """
-function a3(m1, m2, m3, v)
-    tol = eps(typeof(m1))
-    m1 += tol
-    m2 += tol
+function f2α(m1, m2, m3, v)
     m12 = m1 + m2
     
     p = 6.0*m1*m2*m3
-    v1 = m1^2/(6.0*m2*m3)
+    v1 = ifelse(m2 == 0.0, 1.0, m1 / m2) * (m1 / (6.0 * m3))    # change proposed by Kelli Hendricson to avoid the divided by zero issue
     v2 = v1 + (m2 - m1)/(2.0*m3)
     v3 = ifelse(
         m3 < m12, 
@@ -240,56 +288,21 @@ function a3(m1, m2, m3, v)
     return a3
 end
 
-vof_int(v::AbstractArray{T,1}, g) where T = (
-    length(v)==2 ?
-    vof_int(v[1], v[2], zero(T), g) :
-    vof_int(v[1], v[2], v[3], g)
-)
-function vof_int(n1, n2, n3, g)
-    t = abs(n1) + abs(n2) + abs(n3)
-    if g != 0.5
-        m1, m2, m3 = sort3(abs(n1)/t, abs(n2)/t, abs(n3)/t)
-        a = a3(m1, m2, m3, ifelse(g < 0.5, g, 1.0 - g))
-    else
-        a = 0.5
-    end
-    return ifelse(g < 0.5, a, 1.0 - a)*t + min(n1, 0.0) + min(n2, 0.0) + min(n3, 0.0)
-end
 
-vof_vol(v::AbstractArray{T,1}, b) where T = (
-    length(v)==2 ?
-    vof_vol(v[1], v[2], zero(T), b) :
-    vof_vol(v[1], v[2], v[3], b)
-)
-function vof_vol(n1, n2, n3, b)
-    t = abs(n1) + abs(n2) + abs(n3)
-    a = (b - min(n1, 0.0) - min(n2, 0.0) - min(n3, 0.0))/t
+"""
+    reconstructInterface!(f,α,n̂)
 
-    if a <= 0.0 || a == 0.5 || a >= 1.0
-        vof_vol = min(max(a, 0.0), 1.0)
-    else
-        m1, m2, m3 = sort3(abs(n1)/t, abs(n2)/t, abs(n3)/t)
-        t = f3(m1, m2, m3, ifelse(a < 0.5, a, 1.0 - a))
-        vof_vol = ifelse(a < 0.5, t, 1.0 - t)
-    end
-end
-
-function vof_height(I, f, i)
-    h = 0.0
-    I -= δ(i,I)
-    for j ∈ 1:3
-        h += f[I]
-        I += δ(i,I)
-    end
-    return h
-end
-
-function vof_reconstruct!(f,α,n̂;perdir=(0,),dirdir=(0,))
+Reconstruct interface from volume fraction field, involving normal calculation and then the intercept.
+Normal reconstruction follows the central difference algorithm 
+proposed by [Pilliod & Puckett (2004)](https://doi.org/10.1016/j.jcp.2003.12.023) and further
+modified by [Weymouth & Yue (2010)](https://doi.org/10.1016/j.jcp.2009.12.018).
+"""
+function reconstructInterface!(f,α,n̂;perdir=(0,),dirdir=(0,))
     N,n = size_u(n̂)
-    @loop vof_reconstruct!(f,α,n̂,N,I,perdir=perdir,dirdir=dirdir) over I ∈ inside(f)
+    @loop reconstructInterface!(f,α,n̂,N,I,perdir=perdir,dirdir=dirdir) over I ∈ inside(f)
     BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
 end
-function vof_reconstruct!(f::AbstractArray{T,n},α::AbstractArray{T,n},n̂::AbstractArray{T,nv},N,I;perdir=(0,),dirdir=(0,)) where {T,n,nv}
+function reconstructInterface!(f::AbstractArray{T,n},α::AbstractArray{T,n},n̂::AbstractArray{T,nv},N,I;perdir=(0,),dirdir=(0,)) where {T,n,nv}
     fc = f[I]
     nhat = @views n̂[I,:] #nzeros(T,n)
     if (fc==0.0 || fc==1.0)
@@ -304,9 +317,9 @@ function vof_reconstruct!(f::AbstractArray{T,n},α::AbstractArray{T,n},n̂::Abst
             if (d == dc)
                 nhat[d] = copysign(1.0,nhat[d])
             else
-                hu = vof_height(I+δ(d,I), f, dc)
-                hc = vof_height(I       , f, dc)
-                hd = vof_height(I-δ(d,I), f, dc)
+                hu = get3CellHeight(I+δ(d,I), f, dc)
+                hc = get3CellHeight(I       , f, dc)
+                hd = get3CellHeight(I-δ(d,I), f, dc)
                 nhat[d] = -(hu-hd)*0.5
                 if d ∉ dirdir && d ∉ perdir
                     if I[d] == N[d]-1
@@ -325,30 +338,39 @@ function vof_reconstruct!(f::AbstractArray{T,n},α::AbstractArray{T,n},n̂::Abst
                 end
             end
         end
-        α[I] = vof_int(nhat, fc)
+        α[I] = getIntercept(nhat, fc)
         for i∈1:n n̂[I,i] = nhat[i] end
     end
 end
 
-function myargmax(n,vec)
-    max = abs2(vec[1])
-    iMax = 1
-    for i∈2:n
-        cur = abs2(vec[i])
-        if cur > max
-            max = cur
-            iMax = i
-        end
-    end
-    return iMax
+
+"""
+    get3CellHeight(I, f, i)
+
+Calculate accumulate liquid height (amount) of location `I` along `i`ᵗʰ direction (I-δᵢ, I, I+δᵢ).
+"""
+function get3CellHeight(I, f, i)
+    return f[I-δ(i,I)] + f[I] + f[I+δ(i,I)]
 end
 
-function vof_flux!(d,f,α,n̂,u,u⁰,uMulp,fᶠ)
+
+"""
+    getVOFFaceFlux!(d,f,α,n̂,u,u⁰,uMulp,fᶠ)
+
+- `d`: the direction of cell faces that flux is calculated at
+- `f`: volume fraction field
+- `α`: intercept
+- `n̂`: interface normal
+- `u`, `u⁰`: the VOF is fluxed with the average of two velocity
+- `uMulp`: the multiplier of the velocity, to take care of operator splitting coefficients and time step size
+- `fᶠ`: where the flux is stored
+"""
+function getVOFFaceFlux!(d,f,α,n̂,u,u⁰,uMulp,fᶠ)
     N,n = size_u(n̂)
     fᶠ .= 0.0
-    @loop vof_flux!(fᶠ,d,f,α,n̂,0.5*(u[IFace,d]+u⁰[IFace,d])*uMulp,IFace) over IFace ∈ inside_uWB(N,d)
+    @loop getVOFFaceFlux!(fᶠ,d,f,α,n̂,0.5*(u[IFace,d]+u⁰[IFace,d])*uMulp,IFace) over IFace ∈ inside_uWB(N,d)
 end
-function vof_flux!(fᶠ::AbstractArray{T,n},d,fIn::AbstractArray{T,n},α::AbstractArray{T,n},n̂::AbstractArray{T,nv},dl,IFace::CartesianIndex) where {T,n,nv}
+function getVOFFaceFlux!(fᶠ::AbstractArray{T,n},d,fIn::AbstractArray{T,n},α::AbstractArray{T,n},n̂::AbstractArray{T,nv},dl,IFace::CartesianIndex) where {T,n,nv}
     ICell = IFace;
     flux = 0.0
     if dl == 0.0
@@ -364,7 +386,7 @@ function vof_flux!(fᶠ::AbstractArray{T,n},d,fIn::AbstractArray{T,n},α::Abstra
             if (dl > 0.0) a -= nhat[d]*(1.0-dl) end
             nhatOrig = nhat[d]
             nhat[d] *= abs(dl)
-            flux = vof_vol(nhat, a)*dl
+            flux = getVolumeFraction(nhat, a)*dl
             nhat[d] = nhatOrig
         end
     end
@@ -372,53 +394,78 @@ function vof_flux!(fᶠ::AbstractArray{T,n},d,fIn::AbstractArray{T,n},α::Abstra
 end
 
 
-advect!(a::Flow{n}, c::cVOF, f=c.f, u¹=a.u⁰, u²=a.u) where {n} = freeint_update!(
-    a.Δt[end], f, c.fᶠ, c.n̂, c.α, u¹, u², c.c̄;perdir=a.perdir,dirdir=c.dirdir
-)
+"""
+    advect!(a::Flow{n}, c::cVOF, f=c.f, u¹=a.u⁰, u²=a.u)
 
-function freeint_update!(δt, f, fᶠ, n̂, α, u, u⁰, c̄;perdir=(0,),dirdir=(0,))
+This is the spirit of the operator-split cVOF calculation.
+It calculates the volume fraction after one fluxing.
+Volume fraction field `f` is being fluxed with the averaged of two velocity -- `u¹` and `u²`.
+"""
+advect!(a::Flow{D}, c::cVOF, f=c.f, u¹=a.u⁰, u²=a.u) where {D} = updateVOF!(
+    a.Δt[end], f, c.fᶠ, c.n̂, c.α, u¹, u², c.c̄, c.strang;perdir=a.perdir,dirdir=c.dirdir
+)
+function updateVOF!(
+        δt, f::AbstractArray{T,D}, fᶠ::AbstractArray{T,D}, 
+        n̂::AbstractArray{T,Dv}, α::AbstractArray{T,D}, 
+        u::AbstractArray{T,Dv}, u⁰::AbstractArray{T,Dv}, c̄, strang;perdir=(0,),dirdir=(0,)
+    ) where {T,D,Dv}
     tol = 10eps(eltype(f))
-    N,n = size_u(u)
-    insideI = inside(f)
 
     # Gil Strang splitting: see https://www.asc.tuwien.ac.at/~winfried/splitting/
-    if n ==2
+    if D==2
         opOrder = [2,1,2]
         opCoeff = [0.5,1.0,0.5]
-    elseif n==3
+    elseif D==3
         opOrder = [3,2,1,2,3]
         opCoeff = [0.5,0.5,1.0,0.5,0.5]
     end
+
+    # opOrder = [(i+strang[1])%D+1 for i∈1:D] #nthperm(collect(1:D),rand(1:factorial(D)))
+    # opCoeff = [1.0 for i∈1:D]
+    # strang[1] +=1
 
     @loop c̄[I] = f[I] <= 0.5 ? 0 : 1 over I ∈ CartesianIndices(f)
     for iOp ∈ CartesianIndices(opOrder)
         fᶠ .= 0
         d = opOrder[iOp]
         uMulp = opCoeff[iOp]*δt
-        vof_reconstruct!(f,α,n̂,perdir=perdir,dirdir=dirdir)
-        vof_flux!(d,f,α,n̂,u,u⁰,uMulp,fᶠ)
+        reconstructInterface!(f,α,n̂,perdir=perdir,dirdir=dirdir)
+        getVOFFaceFlux!(d,f,α,n̂,u,u⁰,uMulp,fᶠ)
         @loop (
             f[I] += -∂(d,I+δ(d,I),fᶠ) + c̄[I]*(∂(d,I,u)+∂(d,I,u⁰))*0.5uMulp
         ) over I ∈ inside(f)
 
+        # report errors if overfill or overempty
         maxf, maxid = findmax(f)
         minf, minid = findmin(f)
         if maxf-1 > tol
+            println("∇⋅u⁰: ", div(maxid,u⁰))
+            println("∇⋅u : ", div(maxid,u))
+            errorMsg = "max VOF @ $(maxid.I) ∉ [0,1] @ iOp=$iOp which is $d, Δf = $(maxf-1)"
             try
-                error("max VOF @ $(maxid.I) ∉ [0,1] @ iOp=$iOp which is $d, Δf = $(maxf-1)")
+                error(errorMsg)
             catch e
+                println("∇⋅u + ∇⋅u⁰: ", div(maxid,u)+div(maxid,u⁰))
                 Base.printstyled("ERROR: "; color=:red, bold=true)
                 Base.showerror(stdout, e, Base.catch_backtrace())
+                println()
             end
         end
         if minf < -tol
+            println("∇⋅u : ", div(maxid,u⁰))
+            println("∇⋅u⁰: ", div(maxid,u))
+            errorMsg = "min VOF @ $(minid.I) ∉ [0,1] @ iOp=$iOp which is $d, Δf = $(-minf)"
             try
-                error("min VOF @ $(minid.I) ∉ [0,1] @ iOp=$iOp which is $d, Δf = $(-minf)")
+                error(errorMsg)
             catch e
+                println("∇⋅u + ∇⋅u⁰: ", div(minid,u)+div(minid,u⁰))
                 Base.printstyled("ERROR: "; color=:red, bold=true)
                 Base.showerror(stdout, e, Base.catch_backtrace())
+                println()
             end
         end
+
+        # cleanup wasp
         @loop f[I] = f[I] <= tol ? 0.0 : f[I] over I ∈ inside(f)
         @loop f[I] = f[I] >= 1-tol ? 1.0 : f[I] over I ∈ inside(f)
         BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
@@ -507,35 +554,43 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
 """
 @fastmath function mom_step!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody)
     a.u⁰ .= a.u;
-    smoothStep = 2
+    smoothStep = 0
 
     # predictor u → u'
     advect!(a,c,c.f,a.u⁰,a.u)
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
+    smoothVOF!(smoothStep, c.f⁰, c.fᶠ, c.α;perdir=c.perdir)
+    calke && (a.σ .= 0; @inside a.σ[I] = ρkeI(I,a.u,c.fᶠ,c.λρ); push!(c.ke,sum(a.σ)))
     a.u .= 0
-    vof_smooth!(smoothStep, c.f⁰, c.fᶠ, c.α;perdir=c.perdir)
     a.σ .= 0
     conv_diff2p!(a.f,a.u⁰,a.σ,c.fᶠ,c.λμ,c.λρ,a.ν, perdir=a.perdir,g=a.g)
     BDIM!(a)
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
     calculateL!(a,c)
     update!(b)
+    calke && (a.σ .= 0; @inside a.σ[I] = ρkeI(I,a.u,c.fᶠ,c.λρ); push!(c.ke,sum(a.σ)))
     project!(a,b); 
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
+    calke && (a.σ .= 0; @inside a.σ[I] = ρkeI(I,a.u,c.fᶠ,c.λρ); push!(c.ke,sum(a.σ)))
 
     # corrector u → u¹
     advect!(a,c,c.f⁰,a.u⁰,a.u)
     measure!(a,d;t=0,ϵ=1,perdir=a.perdir)
-    vof_smooth!(smoothStep, c.f, c.fᶠ, c.α;perdir=c.perdir)
+    smoothVOF!(smoothStep, c.f, c.fᶠ, c.α;perdir=c.perdir)
+    calke && (a.σ .= 0; @inside a.σ[I] = ρkeI(I,a.u,c.fᶠ,c.λρ); push!(c.ke,sum(a.σ)))
     a.σ .= 0
     conv_diff2p!(a.f,a.u,a.σ,c.fᶠ,c.λμ,c.λρ,a.ν, perdir=a.perdir,g=a.g)
     BDIM!(a); a.u ./= 2;
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, f=2, perdir=a.perdir)
     calculateL!(a,c)
     update!(b)
+    calke && (a.σ .= 0; @inside a.σ[I] = ρkeI(I,a.u,c.fᶠ,c.λρ); push!(c.ke,sum(a.σ)))
     project!(a,b,2);  
     BCVecPerNeu!(a.u;Dirichlet=true, A=a.U, perdir=a.perdir)
+    calke && (a.σ .= 0; @inside a.σ[I] = ρkeI(I,a.u,c.fᶠ,c.λρ); push!(c.ke,sum(a.σ)))
     c.f .= c.f⁰
+
+    calke && (a.σ .= 0; @inside a.σ[I] = ρkeI(I,a.u,c.f,c.λρ); push!(c.ke,sum(a.σ)))
     push!(a.Δt,min(CFL(a,c),1.1a.Δt[end]))
 end
 
@@ -585,5 +640,73 @@ function calculateL!(μ₀,f,λρ,n,U,perdir)
     for d ∈ 1:n
         @loop μ₀[I,d] /= calculateρ(d,I,f,λρ) over I∈inside(f)
     end
-    BCVecPerNeu!(μ₀;Dirichlet=false, A=U, perdir=perdir)
+    BCVecPerNeu!(μ₀;Dirichlet=true, A=U, perdir=perdir)
 end
+
+
+
+# +++++++ Auxiliary functions for multiphase calculation
+
+"""
+    proot(c0, c1, c2, c3)
+
+Calculate the roots of a third order polynomial, which has three real roots:
+    c3 x³ + c2 x² + c1 x¹ + c0 = 0
+"""
+function proot(c0, c1, c2, c3)
+    a0 = c0/c3
+    a1 = c1/c3
+    a2 = c2/c3
+
+    p0 = a1/3.0 - a2^2/9.0
+    q0 = (a1*a2 - 3.0*a0)/6.0 - a2^3/27.0
+    a = q0/sqrt(-p0^3)
+    t = acos(abs2(a)<=1 ? a : 0)/3.0
+
+    proot = sqrt(-p0)*(sqrt(3.0)*sin(t) - cos(t)) - a2/3.0
+
+    return proot
+end
+
+
+"""
+    sort3(a, b, c)
+
+Sort three numbers with bubble sort algorithm to avoid too much memory assignment due to array creation.
+see https://codereview.stackexchange.com/a/91920
+"""
+function sort3(a, b, c)
+    if (a>c) a,c = c,a end
+    if (a>b) a,b = b,a end
+    if (b>c) b,c = c,b end
+    return a,b,c
+end
+
+
+"""
+    myargmax(n,vec)
+
+Return where is the maximum since the original `argmax` function in julia is not working in GPU environment.
+`n` is the length of `vec`
+"""
+function myargmax(n,vec)
+    max = abs2(vec[1])
+    iMax = 1
+    for i∈2:n
+        cur = abs2(vec[i])
+        if cur > max
+            max = cur
+            iMax = i
+        end
+    end
+    return iMax
+end
+
+
+"""
+    boxAroundI(I::CartesianIndex{D})
+
+Return 3 surrunding cells in each diraction of I, including diagonal ones.
+The return grid number adds up to 3ᴰ 
+"""
+boxAroundI(I::CartesianIndex{D}) where D = (I-oneunit(I)):(I+oneunit(I))

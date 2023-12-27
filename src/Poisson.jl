@@ -27,13 +27,15 @@ struct Poisson{T,S<:AbstractArray{T},V<:AbstractArray{T}} <: AbstractPoisson{T,S
     r :: S # residual
     z :: S # source
     n :: Vector{Int16} # pressure solver iterations
+    res :: Vector{T}
+    res0:: Vector{T}
     perdir :: NTuple # direction of periodic boundary condition
     function Poisson(x::AbstractArray{T},L::AbstractArray{T},z::AbstractArray{T};perdir=(0,)) where T
         @assert axes(x) == axes(z) && axes(x) == Base.front(axes(L)) && last(axes(L)) == eachindex(axes(x))
         r = similar(x); fill!(r,0)
         ϵ,D,iD = copy(r),copy(r),copy(r)
         set_diag!(D,iD,L)
-        new{T,typeof(x),typeof(L)}(L,D,iD,x,ϵ,r,z,[],perdir)
+        new{T,typeof(x),typeof(L)}(L,D,iD,x,ϵ,r,z,[],[],[],perdir)
     end
 end
 
@@ -146,14 +148,16 @@ Approximate iterative solver for the Poisson matrix equation `Ax=b`.
 function solver!(p::Poisson;log=false,tol=1e-4,itmx=1e3)
     BCPerNeu!(p.x,perdir=p.perdir)
     residual!(p); r₂ = L₂(p)
+    push!(p.res0,r₂)
     log && (res = [r₂])
     nᵖ=0
-    while r₂>tol && nᵖ<itmx
+    while (r₂>tol || nᵖ==0) && nᵖ<itmx
         smooth!(p); r₂ = L₂(p)
         log && push!(res,r₂)
         nᵖ+=1
     end
     BCPerNeu!(p.x,perdir=p.perdir)
     push!(p.n,nᵖ)
+    push!(p.res,r₂)
     log && return res
 end
