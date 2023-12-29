@@ -8,6 +8,8 @@ function sineWave2D(N; Re=4000, Fr=1, λμ=1e-3, λρ=1e-2, T=Float32, mem=Array
     U = Fr*√(g*λ)
     ν = U*λ/Re
 
+    grav(i,t) = i==1 ? 0 : -g
+
     # Interface function
     function Inter(xyz)
         x,y = @. (xyz-1.5-N/2)
@@ -16,7 +18,7 @@ function sineWave2D(N; Re=4000, Fr=1, λμ=1e-3, λρ=1e-2, T=Float32, mem=Array
 
     return WaterLily.TwoPhaseSimulation(
         NN, (0, 0), λ;
-        U=U, Δt=0.001, ν=ν, InterfaceSDF=Inter, T=T, λμ=λμ, λρ=λρ, mem=mem, grav=(0,-g)
+        U=U, Δt=0.001, ν=ν, InterfaceSDF=Inter, T=T, λμ=λμ, λρ=λρ, mem=mem, g=grav
     )
 end
 
@@ -41,7 +43,7 @@ function TGVBubble2D(N; Re=4000, Fr=1, λμ=1e-3, λρ=1e-2, T=Float32, mem=Arra
 
     return WaterLily.TwoPhaseSimulation(
         NN, (0, 0), R;
-        U=U, Δt=0.001, ν=ν, InterfaceSDF=Inter, T=T, uλ=uλ, λμ=λμ, λρ=λρ, mem=mem, grav=(0,0)
+        U=U, Δt=0.001, ν=ν, InterfaceSDF=Inter, T=T, uλ=uλ, λμ=λμ, λρ=λρ, mem=mem
     )
 end
 
@@ -52,6 +54,8 @@ function damBreak2D(N; Re=493.954, Fr=1, λμ=1e-3, λρ=1e-2, T=Float32, mem=Ar
     U = Fr*√(g*H)
     ν = U*H/Re
 
+    grav(i,t) = i==1 ? 0 : -g
+
     function Inter(xx)
         x = xx .-1.5 .- SA[H,2H]
         return √sum((xi) -> max(0,xi)^2,x) + min(0, maximum(x))
@@ -59,7 +63,7 @@ function damBreak2D(N; Re=493.954, Fr=1, λμ=1e-3, λρ=1e-2, T=Float32, mem=Ar
 
     return WaterLily.TwoPhaseSimulation(
         NN, (0,0), H;
-        U=U, Δt=0.001, ν=ν, InterfaceSDF=Inter, T=T, λμ=λμ, λρ=λρ, mem=mem, grav=(0,-g)
+        U=U, Δt=0.001, ν=ν, InterfaceSDF=Inter, T=T, λμ=λμ, λρ=λρ, mem=mem, g=grav
     )
 end
 
@@ -71,6 +75,7 @@ function fallingDroplet2D(N; Re=493.954, Fr=1, λμ=1e-3, λρ=1e-2, T=Float32, 
     ν = U*R/Re
 
     uλ=(i,x) -> ifelse(i==1,0,0)
+    grav(i,t) = i==1 ? 0 : -g
 
     function Inter(xx)
         x,y = @. xx-1.5
@@ -79,7 +84,7 @@ function fallingDroplet2D(N; Re=493.954, Fr=1, λμ=1e-3, λρ=1e-2, T=Float32, 
 
     return WaterLily.TwoPhaseSimulation(
         NN, (0,0), R;
-        U=U, Δt=0.001, ν=ν, InterfaceSDF=Inter, T=T, uλ=uλ, λμ=λμ, λρ=λρ, mem=mem, grav=(0,-g),perdir=(1,)
+        U=U, Δt=0.001, ν=ν, InterfaceSDF=Inter, T=T, uλ=uλ, λμ=λμ, λρ=λρ, mem=mem, g=grav,perdir=(1,)
     )
 end
 
@@ -90,6 +95,8 @@ function sineWave3D(N; Re=4000, Fr=1, λμ=1e-3, λρ=1e-2, T=Float32, mem=Array
     U = Fr*√(g*λ)
     ν = U*λ/Re
 
+    grav(i,t) = i==3 ? -g : 0
+
     # Interface function
     function Inter(xyz)
         x,y,z = @. (xyz-1.5-N/2)
@@ -98,7 +105,7 @@ function sineWave3D(N; Re=4000, Fr=1, λμ=1e-3, λρ=1e-2, T=Float32, mem=Array
 
     return WaterLily.TwoPhaseSimulation(
         NN, (0, 0, 0), λ;
-        U=U, Δt=0.001, ν=ν, InterfaceSDF=Inter, T=T, λμ=λμ, λρ=λρ, mem=mem, grav=(0,0,-g)
+        U=U, Δt=0.001, ν=ν, InterfaceSDF=Inter, T=T, λμ=λμ, λρ=λρ, mem=mem, g=grav
     )
 end
 
@@ -108,6 +115,8 @@ function VerticalJet2D(N; Re=4000, Fr=1, λμ=1e-3, λρ=1e-2, T=Float32, mem=Ar
     g = 1
     U = Fr*√(g*λ)
     ν = U*λ/Re
+
+    grav(i,t) = i==1 ? 0 : -g
 
     function xLH(NPoint, an)
         ξ = collect(LinRange(0., 2π, NPoint))
@@ -142,7 +151,7 @@ function VerticalJet2D(N; Re=4000, Fr=1, λμ=1e-3, λρ=1e-2, T=Float32, mem=Ar
 
     return WaterLily.TwoPhaseSimulation(
         NN, (0, 0), λ;
-        U=U, Δt=0.001, ν=ν, InterfaceSDF=Inter, T=T, λμ=λμ, λρ=λρ, mem=mem, grav=(0,-g)
+        U=U, Δt=0.001, ν=ν, InterfaceSDF=Inter, T=T, λμ=λμ, λρ=λρ, mem=mem, g=grav
     )
 end
 

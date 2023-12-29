@@ -70,8 +70,30 @@ struct Simulation <: AbstractSimulation
     end
 end
 
+struct TwoPhaseSimulation <: AbstractSimulation
+    U :: Number # velocity scale
+    L :: Number # length scale
+    ϵ :: Number # kernel width
+    flow :: Flow
+    inter:: cVOF
+    body :: AbstractBody
+    pois :: AbstractPoisson
+    function TwoPhaseSimulation(
+                        dims::NTuple{N}, u_BC::NTuple{N}, L::Number;
+                        Δt=0.25, ν=0.,λμ=1e-2,λρ=1e-3, U=√sum(abs2,u_BC), ϵ=1, 
+                        perdir=(0,), dirdir=(0,), g=(i,t)->0,
+                        uλ::Function=(i,x)->u_BC[i], 
+                        InterfaceSDF::Function=(x) -> -5-x[1],
+                        body::AbstractBody=NoBody(),T=Float32,mem=Array) where N
+        flow = Flow(dims,u_BC;uλ,Δt,ν,T,f=mem,perdir=perdir,g=g)
+        inter= cVOF(dims,flow.f,flow.σ; arr=mem, InterfaceSDF=InterfaceSDF, T=T, perdir=flow.perdir, dirdir=dirdir,λμ=λμ,λρ=λρ)
+        measure!(flow,body;ϵ,perdir=perdir)
+        new(U,L,ϵ,flow,inter,body,MultiLevelPoisson(flow.p,flow.μ₀,flow.σ;perdir=perdir))
+    end
+end
+
 time(flow::Flow) = sum(flow.Δt[1:end-1])
-time(sim::Simulation) = time(sim.flow)
+time(sim::AbstractSimulation) = time(sim.flow)
 timeNext(flow::Flow) = sum(flow.Δt)
 """
     sim_time(sim::AbstractSimulation)
