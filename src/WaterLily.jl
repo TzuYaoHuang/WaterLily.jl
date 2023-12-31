@@ -1,16 +1,16 @@
 module WaterLily
 
 include("util.jl")
-export L₂,BC!,BCPer!,BCPerVec!,@inside,inside,δ,apply!,loc
+export L₂,BC!,@inside,inside,δ,apply!,loc
 
 using Reexport
 @reexport using KernelAbstractions: @kernel,@index,get_backend
 
 include("Poisson.jl")
-export AbstractPoisson,Poisson,solver!,mult!,residual!,Jacobi!,smooth!,increment!,pcg!,pureSolver!
+export AbstractPoisson,Poisson,solver!,mult!
 
 include("MultiLevelPoisson.jl")
-export MultiLevelPoisson,solver!,mult!,Vcycle!,residual!,restrict!,prolongate!
+export MultiLevelPoisson,solver!,mult!
 
 include("Flow.jl")
 export Flow,mom_step!

@@ -28,7 +28,7 @@ at time `t` using an immersion kernel of size `ϵ`.
 
 See Maertens & Weymouth, doi:[10.1016/j.cma.2014.09.007](https://doi.org/10.1016/j.cma.2014.09.007).
 """
-function measure!(a::Flow{N,T},body::AbstractBody;t=T(0),ϵ=1,perdir=(0,)) where {N,T}
+function measure!(a::Flow{N,T},body::AbstractBody;t=T(0),ϵ=1) where {N,T}
     a.V .= 0; a.μ₀ .= 1; a.μ₁ .= 0; a.σᵥ .= 0
     @fastmath @inline function fill!(μ₀,μ₁,V,σᵥ,d,I)
         d[I] = sdf(body,loc(0,I,T),t)
@@ -82,4 +82,4 @@ measure_sdf!(a::AbstractArray,body::AbstractBody,t=0) = @inside a[I] = sdf(body,
 Use for a simulation without a body.
 """
 struct NoBody <: AbstractBody end
-function measure!(a::Flow,body::NoBody;t=0,ϵ=1,perdir=(0,)) a.μ₀ .= 1 end
+function measure!(a::Flow,body::NoBody;t=0,ϵ=1) end

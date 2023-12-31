@@ -132,7 +132,6 @@ function project!(a::Flow{n},b::AbstractPoisson,w=1) where n
         @loop a.u[I,i] -= b.L[I,i]*∂(i,I,b.x) over I ∈ inside(b.x)
     end
     b.x ./= dt
-    b.x ./= dt
 end
 
 """
