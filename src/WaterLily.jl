@@ -61,7 +61,7 @@ struct Simulation <: AbstractSimulation
     body :: AbstractBody
     pois :: AbstractPoisson
     function Simulation(dims::NTuple{N}, u_BC::NTuple{N}, L::Number;
-                        Δt=0.25, ν=0., g=(i,t)->0, U=√sum(abs2,u_BC), ϵ=1, perdir=(0,),
+                        Δt=0.25, ν=0., g=nothing, U=√sum(abs2,u_BC), ϵ=1, perdir=(0,),
                         uλ::Function=(i,x)->u_BC[i], exitBC=false,
                         body::AbstractBody=NoBody(),T=Float32,mem=Array) where N
         flow = Flow(dims,u_BC;uλ,Δt,ν,g,T,f=mem,perdir,exitBC)
@@ -92,9 +92,7 @@ struct TwoPhaseSimulation <: AbstractSimulation
     end
 end
 
-time(flow::Flow) = sum(flow.Δt[1:end-1])
 time(sim::AbstractSimulation) = time(sim.flow)
-timeNext(flow::Flow) = sum(flow.Δt)
 """
     sim_time(sim::AbstractSimulation)
 
@@ -105,15 +103,15 @@ scales.
 sim_time(sim::AbstractSimulation) = time(sim)*sim.U/sim.L
 
 """
-    sim_step!(sim::AbstractSimulation,t_end;remeasure=true,verbose=false)
+    sim_step!(sim::Simulation,t_end;max_steps=typemax(Int),remeasure=true,verbose=false)
 
 Integrate the simulation `sim` up to dimensionless time `t_end`.
-If `remeasure=true`, the body is remeasured at every time step. 
+If `remeasure=true`, the body is remeasured at every time step.
 Can be set to `false` for static geometries to speed up simulation.
 """
-function sim_step!(sim::Simulation,t_end;verbose=false,remeasure=true)
+function sim_step!(sim::Simulation,t_end;max_steps=typemax(Int),verbose=false,remeasure=true)
     t = time(sim)
-    while t < t_end*sim.L/sim.U
+    while t < t_end*sim.L/sim.U && length(sim.flow.Δt) <= max_steps
         remeasure && measure!(sim,t)
         mom_step!(sim.flow,sim.pois) # evolve Flow
         t += sim.flow.Δt[end]

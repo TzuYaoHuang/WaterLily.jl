@@ -25,7 +25,6 @@ Return a CartesianIndex of dimension `N` which is one at index `i` and zero else
 Return CartesianIndices range excluding a single layer of cells on all boundaries.
 """
 @inline inside(a::AbstractArray;buff=1) = CartesianIndices(map(ax->first(ax)+buff:last(ax)-buff,axes(a)))
-@inline inside(dims::NTuple{N}) where N = CartesianIndices(map(i->(2:i-1),dims))
 
 """
     inside_u(dims,j)
@@ -152,17 +151,6 @@ in the other dimensions.
 """
 function slice(dims::NTuple{N},i,j,low=1) where N
     CartesianIndices(ntuple( k-> k==j ? (i:i) : (low:dims[k]), N))
-end
-using Statistics
-"""
-    removeMean!(s)
-
-Remove the meam of scalar array `s` in physical domain from `s`.
-This is potentially useful for pressure normalization.
-"""
-function removeMean!(s)
-    s̄ = Statistics.mean(@views s[inside(s)])
-    s .-= s̄
 end
 
 """

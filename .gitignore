@@ -16,6 +16,7 @@ Manifest.toml
 *.dat
 *.txt
 *.jld*
+*.json
 
 # paraview
 *.vti
