@@ -82,4 +82,4 @@ measure_sdf!(a::AbstractArray,body::AbstractBody,t=0) = @inside a[I] = sdf(body,
 Use for a simulation without a body.
 """
 struct NoBody <: AbstractBody end
-function measure!(a::Flow,body::NoBody;t=0,ϵ=1) end
+function measure!(a::Flow,body::NoBody;t=0,ϵ=1) a.μ₀ .= 1 end

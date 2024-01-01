@@ -81,14 +81,14 @@ struct TwoPhaseSimulation <: AbstractSimulation
     function TwoPhaseSimulation(
                         dims::NTuple{N}, u_BC::NTuple{N}, L::Number;
                         Δt=0.25, ν=0.,λμ=1e-2,λρ=1e-3, U=√sum(abs2,u_BC), ϵ=1, 
-                        perdir=(0,), dirdir=(0,), g=(i,t)->0,
-                        uλ::Function=(i,x)->u_BC[i], 
+                        perdir=(0,), dirdir=(0,), g=nothing,
+                        uλ::Function=(i,x)->u_BC[i], exitBC=false,
                         InterfaceSDF::Function=(x) -> -5-x[1],
                         body::AbstractBody=NoBody(),T=Float32,mem=Array) where N
-        flow = Flow(dims,u_BC;uλ,Δt,ν,T,f=mem,perdir=perdir,g=g)
-        inter= cVOF(dims,flow.f,flow.σ; arr=mem, InterfaceSDF=InterfaceSDF, T=T, perdir=flow.perdir, dirdir=dirdir,λμ=λμ,λρ=λρ)
-        measure!(flow,body;ϵ,perdir=perdir)
-        new(U,L,ϵ,flow,inter,body,MultiLevelPoisson(flow.p,flow.μ₀,flow.σ;perdir=perdir))
+        flow = Flow(dims,u_BC;uλ,Δt,ν,g,T,f=mem,perdir,exitBC)
+        inter= cVOF(dims,flow.f,flow.σ; arr=mem,InterfaceSDF,T,perdir,dirdir,λμ,λρ)
+        measure!(flow,body;ϵ)
+        new(U,L,ϵ,flow,inter,body,MultiLevelPoisson(flow.p,flow.μ₀,flow.σ;perdir))
     end
 end
 
@@ -137,7 +137,7 @@ end
 Measure a dynamic `body` to update the `flow` and `pois` coefficients.
 """
 function measure!(sim::Simulation,t=time(sim))
-    measure!(sim.flow,sim.body;t,ϵ=sim.ϵ,perdir=sim.flow.perdir)
+    measure!(sim.flow,sim.body;t,ϵ=sim.ϵ)
     update!(sim.pois)
 end
 

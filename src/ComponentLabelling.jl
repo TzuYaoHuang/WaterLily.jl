@@ -25,8 +25,6 @@ struct BubblesInfo
     end
 end
 
-@inline inside(a::AbstractArray) = CartesianIndices(map(ax->first(ax)+1:last(ax)-1,axes(a)))
-
 function negI(i,I,N)
     if I[i] != 2
         return CartesianIndex(ntuple(j -> j==i ? I[j]-1 : I[j], length(N)))
