@@ -2,6 +2,7 @@ using ForwardDiff
 using Printf
 using JLD2
 using Combinatorics
+using Statistics
 
 
 """
@@ -26,7 +27,9 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
     λρ :: T   # ratio of density (air/water)
     λμ :: T   # ratio of dynamic viscosity (air/water)
     ke ::Vector{T}
+    keN::Vector{T}
     strang :: Vector{Int}
+    f1 :: Sf
     function cVOF(N::NTuple{D}, n̂place, αplace; arr=Array, InterfaceSDF::Function=(x) -> 5-x[1], T=Float64, perdir=(0,), dirdir=(0,),λμ=1e-2,λρ=1e-3) where D
         Ng = N .+ 2  # scalar field size
         Nd = (Ng..., D)  # vector field size
@@ -38,12 +41,13 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
         BCVOF!(f,α,n̂;perdir=perdir,dirdir=dirdir)
         f⁰ = copy(f)
         smoothVOF!(0, f, fᶠ, α;perdir=perdir)
-        new{D,T,typeof(f),typeof(n̂)}(f,f⁰,fᶠ,n̂,α,c̄,perdir,dirdir,λρ,λμ,[],[0])
+        f1 = ones(T, Ng) |> arr
+        new{D,T,typeof(f),typeof(n̂)}(f,f⁰,fᶠ,n̂,α,c̄,perdir,dirdir,λρ,λμ,[],[],[0],f1)
     end
 end
 
 
-
+calke = true
 
 """
     mom_step!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody)
@@ -60,12 +64,15 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     # predictor u → u'
     advect!(a,c,c.f,a.u⁰,a.u); measure!(a,d;t=0,ϵ=1)
     smoothVOF!(smoothStep, c.f⁰, c.fᶠ, c.α;perdir=c.perdir)
+    calke && calke!(a.σ,a.u,c.fᶠ,c.f1,c.λρ,c.ke,c.keN)
     a.u .= 0
     conv_diff2p!(a.f,a.u⁰,a.σ,c.fᶠ,c.λμ,c.λρ,a.ν,perdir=a.perdir)
     accelerate!(a.f,time(a),a.g)
     BDIM!(a); BC!(a.u,a.U,false,a.perdir)
+    calke && calke!(a.σ,a.u,c.f,c.f1,c.λρ,c.ke,c.keN)
     calculateL!(a,c); update!(b)
     project!(a,b); BC!(a.u,a.U,a.exitBC,a.perdir)
+    calke && calke!(a.σ,a.u,c.f,c.f1,c.λρ,c.ke,c.keN)
 
     # corrector u → u¹
     advect!(a,c,c.f⁰,a.u⁰,a.u); measure!(a,d;t=0,ϵ=1)
@@ -73,8 +80,10 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     conv_diff2p!(a.f,a.u,a.σ,c.fᶠ,c.λμ,c.λρ,a.ν,perdir=a.perdir)
     accelerate!(a.f,timeNext(a),a.g)
     BDIM!(a); scale_u!(a,0.5); BC!(a.u,a.U,a.exitBC,a.perdir)
+    calke && calke!(a.σ,a.u,c.fᶠ,c.f1,c.λρ,c.ke,c.keN)
     calculateL!(a,c); update!(b)
     project!(a,b,0.5); BC!(a.u,a.U,a.exitBC,a.perdir)
+    calke && calke!(a.σ,a.u,c.fᶠ,c.f1,c.λρ,c.ke,c.keN)
     c.f .= c.f⁰
 
     push!(a.Δt,min(CFL(a,c),1.1a.Δt[end]))
@@ -96,7 +105,6 @@ function conv_diff2p!(r,u,Φ,fᶠ,λμ,λρ,ν;perdir=(0,))
         @loop r[I-δ(j,I),i] -= Φ[I] over I ∈ inside_u(N,j)
         # treatment for upper boundary with BCs
         upperBoundaryDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N,Val{tagper}())
-        upperBoundary!(r,u,Φ,ν,i,j,N,Val{tagper}())
     end
 
     for i ∈ 1:n
@@ -116,7 +124,6 @@ function conv_diff2p!(r,u,Φ,fᶠ,λμ,λρ,ν;perdir=(0,))
         @loop r[I-δ(j,I),i] -= Φ[I] over I ∈ inside_u(N,j)
         # treatment for upper boundary with BCs
         upperBoundaryConv!(r,u,Φ,ν,i,j,N,Val{tagper}())
-        upperBoundary!(r,u,Φ,ν,i,j,N,Val{tagper}())
     end
 end
 
@@ -135,6 +142,8 @@ lowBoundaryConv!(r,u,Φ,ν,i,j,N,::Val{true}) = @loop (
     Φ[I] = ϕuP(j,CIj(j,CI(I,i),N[j]-2),CI(I,i),u,ϕ(i,CI(I,j),u));
     r[I,i] += Φ[I]
 ) over I ∈ slice(N,2,j,2)
+upperBoundaryDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N,::Val{true}) = @loop r[I-δ(j,I),i] -= Φ[CIj(j,I,2)] over I ∈ slice(N,N[j],j,2)
+upperBoundaryConv!(r,u,Φ,ν,i,j,N,::Val{true}) = @loop r[I-δ(j,I),i] -= Φ[CIj(j,I,2)] over I ∈ slice(N,N[j],j,2)
 
 function measure!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,t=0)
     measure!(a,d;t=0,ϵ=1)
@@ -676,4 +685,22 @@ boxAroundI(I::CartesianIndex{D}) where D = (I-oneunit(I)):(I+oneunit(I))
 function cleanWasp!(f::AbstractArray{T,D},tol=10eps(T)) where {T,D}
     @loop f[I] = f[I] <= tol ? 0.0 : f[I] over I ∈ inside(f)
     @loop f[I] = f[I] >= 1-tol ? 1.0 : f[I] over I ∈ inside(f)
+end
+
+function checkNaNInf(f)
+    for I∈CartesianIndices(f)
+        if isnan(f[I])
+            error("There is NaN in $(I.I)!")
+        elseif isinf(f[I])
+            error("There is Inf in $(I.I)!")
+        end
+    end
+end
+
+function calke!(σ,u,f,f1,λρ,ke,keN)
+    σ.=0
+    @inside σ[I] = ρkeI(I,u,f ,λρ)
+    push!(ke,Statistics.mean(@views σ[inside(σ)]))
+    @inside σ[I] = ρkeI(I,u,f1,λρ)
+    push!(keN,Statistics.mean(@views σ[inside(σ)]))
 end

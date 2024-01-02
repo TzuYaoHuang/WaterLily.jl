@@ -135,7 +135,7 @@ Approximate iterative solver for the Poisson matrix equation `Ax=b`.
   - `tol`: Convergence tolerance on the `L₂`-norm residual.
   - `itmx`: Maximum number of iterations.
 """
-function solver!(p::Poisson;log=false,tol=1e-4,itmx=1e3)
+function solver_!(p::Poisson;log=false,tol=1e-4,itmx=1e3)
     BC!(p.x;perdir=p.perdir)
     residual!(p); r₂ = L₂(p)
     push!(p.res0,r₂)
@@ -143,6 +143,39 @@ function solver!(p::Poisson;log=false,tol=1e-4,itmx=1e3)
     nᵖ=0
     while (r₂>tol || nᵖ==0) && nᵖ<itmx
         smooth!(p); r₂ = L₂(p)
+        log && push!(res,r₂)
+        nᵖ+=1
+    end
+    BC!(p.x;perdir=p.perdir)
+    push!(p.n,nᵖ)
+    push!(p.res,r₂)
+    log && return res
+end
+
+function solver!(p::Poisson;log=false,tol=1e-8,itmx=1e3)
+    BC!(p.x;perdir=p.perdir)
+    residual!(p); r₂ = L₂(p)
+    push!(p.res0,r₂)
+    log && (res = [r₂])
+    nᵖ=0
+    x,r,ϵ,z = p.x,p.r,p.ϵ,p.z
+    @inside z[I] = ϵ[I] = r[I]*p.iD[I]
+    insideI = inside(x) # [insideI]
+    rho = r ⋅ z
+    while (r₂>tol || nᵖ==0) && nᵖ<itmx
+        BC!(ϵ;perdir=p.perdir)
+        @inside z[I] = mult(I,p.L,p.D,ϵ)
+        alpha = rho/(z[insideI]⋅ϵ[insideI])
+        @loop (x[I] += alpha*ϵ[I];
+               r[I] -= alpha*z[I]) over I ∈ inside(x)
+        # (i==it || abs(alpha)<1e-2) && break
+        @inside z[I] = r[I]*p.iD[I]
+        rho2 = r⋅z
+        # abs(rho2)<1e-8 && break
+        beta = rho2/rho
+        @inside ϵ[I] = beta*ϵ[I]+z[I]
+        rho = rho2
+        r₂ = L₂(p)
         log && push!(res,r₂)
         nᵖ+=1
     end
