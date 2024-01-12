@@ -47,7 +47,7 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
 end
 
 
-calke = true
+calke = false
 
 """
     mom_step!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody)
@@ -57,9 +57,7 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
 """
 @fastmath function mom_step!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody)
     a.u⁰ .= a.u;
-    smoothStep = 0
-
-    divu = a.σ*0; divu0 = a.σ*0;
+    smoothStep = 2
 
     # predictor u → u'
     advect!(a,c,c.f,a.u⁰,a.u); measure!(a,d;t=0,ϵ=1)
@@ -164,7 +162,8 @@ function CFL(a::Flow,c::cVOF)
     fluxLimit = inv(maximum(@views a.σ[inside(a.σ)])+5*a.ν*max(1,c.λμ/c.λρ))
     @inside a.σ[I] = MaxTotalflux(I,a.u)
     cVOFLimit = 0.5*inv(maximum(@views a.σ[inside(a.σ)]))
-    0.8min(10.,fluxLimit,cVOFLimit)
+    # 0.8min(10.,fluxLimit,cVOFLimit)
+    0.03/maximum(abs,a.u)
 end
 
 # function myCFL(a::Flow,c::cVOF)
@@ -224,8 +223,10 @@ function updateVOF!(
         maxf, maxid = findmax(f)
         minf, minid = findmin(f)
         if maxf-1 > tol
-            @printf("∇⋅u⁰ = %+13.8f, ∇⋅u  = %+13.8f\n",div(maxid,u⁰),div(maxid,u))
+            du⁰,du = abs(div(maxid,u⁰)),abs(div(maxid,u))
+            @printf("|∇⋅u⁰| = %+13.8f, |∇⋅u| = %+13.8f\n",du⁰,du)
             errorMsg = "max VOF @ $(maxid.I) ∉ [0,1] @ iOp=$iOp which is direction $d, Δf = $(maxf-1)"
+            (du⁰+du > 10) && error(errorMsg)
             try
                 error(errorMsg)
             catch e
@@ -234,8 +235,10 @@ function updateVOF!(
             end
         end
         if minf < -tol
-            @printf("∇⋅u⁰ = %+13.8f, ∇⋅u  = %+13.8f\n",div(maxid,u⁰),div(maxid,u))
+            du⁰,du = abs(div(minid,u⁰)),abs(div(minid,u))
+            @printf("|∇⋅u⁰| = %+13.8f, |∇⋅u| = %+13.8f\n",du⁰,du)
             errorMsg = "min VOF @ $(minid.I) ∉ [0,1] @ iOp=$iOp which is direction $d, Δf = $(-minf)"
+            (du⁰+du > 10) && error(errorMsg)
             try
                 error(errorMsg)
             catch e
@@ -244,8 +247,8 @@ function updateVOF!(
             end
         end
 
-        # cleanup wasp
-        cleanWasp!(f,tol)
+        # cleanup Wisp
+        cleanWisp!(f,tol)
         BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
     end
 end
@@ -407,8 +410,8 @@ Given a distance function (FreeSurfsdf) for the initial free-surface, yield the 
 function applyVOF!(f::AbstractArray{T,D},α::AbstractArray{T,D},FreeSurfsdf::Function) where {T,D}
     # set up the field
     @loop applyVOF!(f,α,FreeSurfsdf,I) over I ∈ inside(f)
-    # Clear wasps in the flow
-    cleanWasp!(f)
+    # Clear Wisps in the flow
+    cleanWisp!(f)
 end
 function applyVOF!(f::AbstractArray{T,D},α::AbstractArray{T,D},FreeSurfsdf::Function,I::CartesianIndex{D}) where {T,D}
     α[I] = FreeSurfsdf(loc(0,I))  # the coordinate of the cell center
@@ -682,7 +685,7 @@ The return grid number adds up to 3ᴰ
 """
 boxAroundI(I::CartesianIndex{D}) where D = (I-oneunit(I)):(I+oneunit(I))
 
-function cleanWasp!(f::AbstractArray{T,D},tol=10eps(T)) where {T,D}
+function cleanWisp!(f::AbstractArray{T,D},tol=10eps(T)) where {T,D}
     @loop f[I] = f[I] <= tol ? 0.0 : f[I] over I ∈ inside(f)
     @loop f[I] = f[I] >= 1-tol ? 1.0 : f[I] over I ∈ inside(f)
 end

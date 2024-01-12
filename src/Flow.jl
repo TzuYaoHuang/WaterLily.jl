@@ -1,6 +1,7 @@
 @inline ∂(a,I::CartesianIndex{d},f::AbstractArray{T,d}) where {T,d} = @inbounds f[I]-f[I-δ(a,I)]
 @inline ∂(a,I::CartesianIndex{m},u::AbstractArray{T,n}) where {T,n,m} = @inbounds u[I+δ(a,I),a]-u[I,a]
 @inline ϕ(a,I,f) = @inbounds (f[I]+f[I-δ(a,I)])*0.5
+@inline ϕ(a,I,f,pow) = @inbounds ((f[I]^pow+f[I-δ(a,I)]^pow)*0.5)^(1/pow)
 @fastmath quick(u,c,d) = median((5c+2d-u)/6,c,median(10c-9u,c,d))
 @fastmath vanLeer(u,c,d) = (c≤min(u,d) || c≥max(u,d)) ? c : c+(d-c)*(c-u)/(d-u)
 @inline ϕu(a,I,f,u,λ=quick) = @inbounds u>0 ? u*λ(f[I-2δ(a,I)],f[I-δ(a,I)],f[I]) : u*λ(f[I+δ(a,I)],f[I],f[I-δ(a,I)])
@@ -105,7 +106,7 @@ struct Flow{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}, Tf<:AbstractArray{
         Ng = N .+ 2
         Nd = (Ng..., D)
         u = Array{T}(undef, Nd...) |> f; apply!(uλ, u);
-        BC!(u,U,exitBC,perdir); exitBC!(u,u,U,0.)
+        BC!(u,U,exitBC,perdir); exitBC && exitBC!(u,u,U,0.)
         u⁰ = copy(u)
         fv, p, σ = zeros(T, Nd) |> f, zeros(T, Ng) |> f, zeros(T, Ng) |> f
         V, σᵥ = zeros(T, Nd) |> f, zeros(T, Ng) |> f
@@ -127,6 +128,7 @@ end
 function project!(a::Flow{n},b::AbstractPoisson,w=1) where n
     dt = w*a.Δt[end]
     @inside b.z[I] = div(I,a.u)+a.σᵥ[I]; b.x .*= dt # set source term & solution IC
+    # jldsave("solver.jld2"; l=b.L, z=b.z, x=b.x)
     solver!(b)
     for i ∈ 1:n  # apply solution and unscale to recover pressure
         @loop a.u[I,i] -= b.L[I,i]*∂(i,I,b.x) over I ∈ inside(b.x)

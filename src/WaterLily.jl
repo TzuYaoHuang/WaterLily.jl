@@ -67,7 +67,7 @@ struct Simulation <: AbstractSimulation
                         body::AbstractBody=NoBody(),T=Float32,mem=Array) where N
         flow = Flow(dims,u_BC;uλ,Δt,ν,g,T,f=mem,perdir,exitBC)
         measure!(flow,body;ϵ)
-        new(U,L,ϵ,flow,body,MultiLevelPoisson(flow.p,flow.μ₀,flow.σ;perdir))
+        new(U,L,ϵ,flow,body,Poisson(flow.p,flow.μ₀,flow.σ;perdir))
     end
 end
 
@@ -89,7 +89,7 @@ struct TwoPhaseSimulation <: AbstractSimulation
         flow = Flow(dims,u_BC;uλ,Δt,ν,g,T,f=mem,perdir,exitBC)
         inter= cVOF(dims,flow.f,flow.σ; arr=mem,InterfaceSDF,T,perdir,dirdir,λμ,λρ)
         measure!(flow,body;ϵ)
-        new(U,L,ϵ,flow,inter,body,MultiLevelPoisson(flow.p,flow.μ₀,flow.σ;perdir))
+        new(U,L,ϵ,flow,inter,body,Poisson(flow.p,flow.μ₀,flow.σ;perdir))
     end
 end
 
