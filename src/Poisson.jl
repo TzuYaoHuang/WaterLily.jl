@@ -41,7 +41,7 @@ end
 
 function set_diag!(D,iD,L)
     @inside D[I] = diag(I,L)
-    @inside iD[I] = abs2(D[I])<1e-8 ? 0. : inv(D[I])
+    @inside iD[I] = abs2(D[I])<2eps(eltype(D)) ? 0. : inv(D[I])
 end
 update!(p::Poisson) = set_diag!(p.D,p.iD,p.L)
 
@@ -163,6 +163,7 @@ function solver!(p::Poisson;log=false,tol=1e-10,itmx=4e3)
     insideI = inside(x) # [insideI]
     rho = r ⋅ z
     while (r₂>tol || nᵖ==0) && nᵖ<itmx
+        # abs(rho)<10eps(eltype(z)) && break
         BC!(ϵ;perdir=p.perdir)
         @inside z[I] = mult(I,p.L,p.D,ϵ)
         alpha = rho/(z[insideI]⋅ϵ[insideI])

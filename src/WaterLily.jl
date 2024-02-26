@@ -67,7 +67,7 @@ struct Simulation <: AbstractSimulation
                         body::AbstractBody=NoBody(),T=Float32,mem=Array) where N
         flow = Flow(dims,u_BC;uλ,Δt,ν,g,T,f=mem,perdir,exitBC)
         measure!(flow,body;ϵ)
-        new(U,L,ϵ,flow,body,Poisson(flow.p,flow.μ₀,flow.σ;perdir))
+        new(U,L,ϵ,flow,body,MultiLevelPoisson(flow.p,flow.μ₀,flow.σ;perdir))
     end
 end
 
@@ -89,7 +89,7 @@ struct TwoPhaseSimulation <: AbstractSimulation
         flow = Flow(dims,u_BC;uλ,Δt,ν,g,T,f=mem,perdir,exitBC)
         inter= cVOF(dims,flow.f,flow.σ; arr=mem,InterfaceSDF,T,perdir,dirdir,λμ,λρ)
         measure!(flow,body;ϵ)
-        new(U,L,ϵ,flow,inter,body,Poisson(flow.p,flow.μ₀,flow.σ;perdir))
+        new(U,L,ϵ,flow,inter,body,MultiLevelPoisson(flow.p,flow.μ₀,flow.σ;perdir))
     end
 end
 
@@ -120,12 +120,12 @@ function sim_step!(sim::Simulation,t_end;max_steps=typemax(Int),verbose=false,re
             ", Δt=",round(sim.flow.Δt[end],digits=3))
     end
 end
-function sim_step!(sim::TwoPhaseSimulation,t_end;verbose=false,remeasure=true,smoothStep=Inf,oldPStorage=zeros(1))
+function sim_step!(sim::TwoPhaseSimulation,t_end;verbose=false,remeasure=true,smoothStep=Inf,oldPStorage=zeros(1),ω=1)
     t = time(sim)
     while t < t_end*sim.L/sim.U
         remeasure && measure!(sim,t)
         mom_step!(sim.flow,sim.pois,sim.inter,sim.body) # evolve Flow
-        (length(sim.flow.Δt)%smoothStep==0) && smoothVelocity!(sim.flow,sim.pois,sim.inter,sim.body,oldPStorage)
+        (length(sim.flow.Δt)%smoothStep==0) && smoothVelocity!(sim.flow,sim.pois,sim.inter,sim.body,oldPStorage;ω)
         t += sim.flow.Δt[end]
         verbose && println("tU/L=",round(t*sim.U/sim.L,digits=4),
             ", Δt=",round(sim.flow.Δt[end],digits=3))
@@ -140,6 +140,9 @@ Measure a dynamic `body` to update the `flow` and `pois` coefficients.
 function measure!(sim::Simulation,t=time(sim))
     measure!(sim.flow,sim.body;t,ϵ=sim.ϵ)
     update!(sim.pois)
+end
+function measure!(sim::TwoPhaseSimulation,t=time(sim))
+    measure!(sim.flow,sim.pois,sim.inter,sim.body,t)
 end
 
 export Simulation,TwoPhaseSimulation,sim_step!,sim_time,measure!,@inside,inside

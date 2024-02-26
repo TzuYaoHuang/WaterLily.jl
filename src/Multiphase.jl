@@ -3,6 +3,8 @@ using Printf
 using JLD2
 using Combinatorics
 using Statistics
+using StaticArrays
+using Interpolations
 
 
 """
@@ -57,23 +59,23 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
 """
 @fastmath function mom_step!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody)
     a.u⁰ .= a.u;
-    smoothStep = 2
+    smoothStep = 5
 
     # predictor u → u'
-    advect!(a,c,c.f,a.u⁰,a.u); measure!(a,d;t=0,ϵ=1)
+    advect!(a,c,c.f,a.u⁰,a.u); measure!(a,d,c;t=0,ϵ=1)
     smoothVOF!(smoothStep, c.f⁰, c.fᶠ, c.α;perdir=c.perdir)
     calke && calke!(a.σ,a.u,c.fᶠ,c.f1,c.λρ,c.ke,c.keN)
     a.u .= 0
     conv_diff2p!(a.f,a.u⁰,a.σ,c.fᶠ,c.λμ,c.λρ,a.ν,perdir=a.perdir)
     accelerate!(a.f,time(a),a.g)
-    BDIM!(a); BC!(a.u,a.U,false,a.perdir)
+    BDIM!(a); BC!(a.u,a.U,a.exitBC,a.perdir)
     calke && calke!(a.σ,a.u,c.f,c.f1,c.λρ,c.ke,c.keN)
     calculateL!(a,c); update!(b)
     project!(a,b); BC!(a.u,a.U,a.exitBC,a.perdir)
     calke && calke!(a.σ,a.u,c.f,c.f1,c.λρ,c.ke,c.keN)
 
     # corrector u → u¹
-    advect!(a,c,c.f⁰,a.u⁰,a.u); measure!(a,d;t=0,ϵ=1)
+    advect!(a,c,c.f⁰,a.u⁰,a.u); measure!(a,d,c;t=0,ϵ=1)
     smoothVOF!(smoothStep, c.f, c.fᶠ, c.α;perdir=c.perdir)
     conv_diff2p!(a.f,a.u,a.σ,c.fᶠ,c.λμ,c.λρ,a.ν,perdir=a.perdir)
     accelerate!(a.f,timeNext(a),a.g)
@@ -144,7 +146,7 @@ upperBoundaryDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N,::Val{true}) = @loop r[I-δ(j,I),i]
 upperBoundaryConv!(r,u,Φ,ν,i,j,N,::Val{true}) = @loop r[I-δ(j,I),i] -= Φ[CIj(j,I,2)] over I ∈ slice(N,N[j],j,2)
 
 function measure!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,t=0)
-    measure!(a,d;t=0,ϵ=1)
+    measure!(a,d,c;t=0,ϵ=1)
     calculateL!(a,c)
     update!(b)
 end
@@ -352,20 +354,22 @@ Smooth the velocity with top hat filter base on algorithm proposed by [Fu et al.
 We smooth the area where air dominates (α≤0.5, I suppose there is typo in eq. (1)). 
 Note that we need an additional `oldp` variable to store the old pressure field in order to avoid the potential field here messing up with the old one.
 """
-function smoothVelocity!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,oldp)
+function smoothVelocity!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,oldp;ω=1)
     oldp .= a.p; a.p .= 0
+    a.u⁰ .= a.u;
 
     # smooth velocity field base on the (smoothed) VOF field
     smoothVOF!(0, c.f, c.fᶠ, c.α;perdir=c.perdir)
     smoothVelocity!(a.u,c.fᶠ,c.n̂,c.λρ)
-    BC!(a.u,a.U,false,a.perdir)
+    @. a.u = ω*a.u + (1-ω)*a.u⁰
+    BC!(a.u,a.U,a.exitBC,a.perdir)
 
     # update the poisson solver and project the smoothed velcity field into the solenoidal velocity field
-    measure!(a,d;t=0,ϵ=1)
+    measure!(a,d,c;t=0,ϵ=1)
     calculateL!(a,c)
     update!(b)
     project!(a,b);
-    BC!(a.u,a.U,false,a.perdir)
+    BC!(a.u,a.U,a.exitBC,a.perdir)
 
     a.p .= oldp
 
@@ -390,10 +394,17 @@ function smoothVelocity!(u::AbstractArray{T,dv}, f::AbstractArray{T,d}, buffer::
     fM = ϕ(i,I,f)
     if fM<=0.5
         a = zero(eltype(u))
-        for II ∈ boxAroundI(I)
-            rhoII = calculateρ(i,II,f,λρ)
-            buffer[I,i] += rhoII*u[II,i]
-            a += rhoII
+        # for II ∈ boxAroundI(I)
+        #     rhoII = calculateρ(i,II,f,λρ)
+        #     buffer[I,i] += rhoII*u[II,i]
+        #     a += rhoII
+        # end
+        for j∈1:d
+            rhoI0 = calculateρ(i,I-δ(j,I),f,λρ)
+            rhoI1 = calculateρ(i,I,f,λρ)
+            rhoI2 = calculateρ(i,I+δ(j,I),f,λρ)
+            buffer[I,i] += rhoI0*u[I-δ(j,I),i] + 2rhoI1*u[I,i] + rhoI2*u[I+δ(j,I),i]
+            a += rhoI0 + 2rhoI1 + rhoI2
         end
         buffer[I,i] /= a
     else
@@ -419,25 +430,40 @@ function applyVOF!(f::AbstractArray{T,D},α::AbstractArray{T,D},FreeSurfsdf::Fun
 end
 
 """
-    smoothVOF!(itm, f, sf)
+    smoothVOF!(itm, f, sf, rf)
 
 Smooth the cell-centered VOF field with moving average technique.
 itm: smooth steps
 f: befor smooth
 sf: after smooth
+rf: buffer
 """
-function smoothVOF!(itm, f::AbstractArray{T,d}, sf::AbstractArray{T,d}, rf::AbstractArray{T,d};perdir=(0,)) where {T,d}
+function smoothVOF!(itm, f::AbstractArray{T,d}, sf::AbstractArray{T,d}, rf::AbstractArray{T,d};perdir=(0,),kelli=true) where {T,d}
     (itm!=0)&&(rf .= f)
+    α,β,γ = 1,1,1
     for it ∈ 1:itm
         sf .= 0
-        for j ∈ 1:d
-            @loop sf[I] += rf[I+δ(j, I)] + rf[I-δ(j, I)] + 2*rf[I] over I ∈ inside(rf)
-        end
+        @loop sumAvg!(sf,rf,I) over I ∈ inside(rf)
         BC!(sf;perdir)
-        sf ./= 4*d
         rf .= sf
     end
+    kelli && interpol!(sf)
     (itm==0)&&(sf .= f)
+end
+
+function sumAvg!(sf::AbstractArray{T,d},rf::AbstractArray{T,d},I) where {T,d}
+    α,β,γ = 1,1,1
+    for j∈1:d
+        sf[I] += α*rf[I+δ(j, I)] + β*rf[I-δ(j, I)] + γ*rf[I]
+    end
+    sf[I] /= (α+β+γ)*d
+end
+
+function interpol!(f)
+    fin = SA[0.0,0.000128601,0.00270062,0.0239198,0.116512,0.344136,0.655864,0.883488,0.97608,0.997299,0.999871,1.0]
+    fout= SA[0,0.00104741,0.0123377,0.0397531,0.131237,0.347321,0.664065,0.929867,1,1,1,1]
+    nterp_linear = linear_interpolation(fin, fout)
+    @loop f[I] = nterp_linear(f[I]) over I ∈ CartesianIndices(f)
 end
 
 """
