@@ -67,10 +67,16 @@ using EllipsisNotation
 This function adds a uniform acceleration field `g` at time `t` to `r`.
 If `g ≠ nothing`, then `g(i,t)=dUᵢ/dt`.
 """
-accelerate!(r,t,g) = for i ∈ 1:last(size(r))
+accelerate!(r,t,g::Function,::Tuple) = for i ∈ 1:last(size(r))
     r[..,i] .+= g(i,t)
 end
-accelerate!(r,t,::Nothing) = nothing
+accelerate!(r,t,g::Nothing,U::Function) = for i ∈ 1:last(size(r))
+    r[..,i] .+= ForwardDiff.derivative(τ->U(i,τ),t)
+end
+accelerate!(r,t,g::Function,U::Function) = for i ∈ 1:last(size(r))
+    r[..,i] .+= g(i,t) + ForwardDiff.derivative(τ->U(i,τ),t)
+end
+accelerate!(r,t,::Nothing,::Tuple) = nothing
 
 """
     Flow{D::Int, T::Float, Sf<:AbstractArray{T,D}, Vf<:AbstractArray{T,D+1}, Tf<:AbstractArray{T,D+2}}
@@ -91,28 +97,25 @@ struct Flow{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}, Tf<:AbstractArray{
     σ :: Sf # divergence scalar
     # BDIM fields
     V :: Vf # body velocity vector
-    σᵥ:: Sf # body velocity divergence
     μ₀:: Vf # zeroth-moment vector
     μ₁:: Tf # first-moment tensor field
     # Non-fields
-    U :: NTuple{D, T} # domain boundary values
+    U :: Union{NTuple{D,Number},Function} # domain boundary values
     Δt:: Vector{T} # time step (stored in CPU memory)
     ν :: T # kinematic viscosity
     g :: Union{Function,Nothing} # (possibly time-varying) uniform acceleration field
     exitBC :: Bool # Convection exit
-    perdir :: NTuple # direction of periodic direction
-    function Flow(N::NTuple{D}, U::NTuple{D}; f=Array, Δt=0.25, ν=0., g=nothing,
+    perdir :: NTuple # tuple of periodic direction
+    function Flow(N::NTuple{D}, U; f=Array, Δt=0.25, ν=0., g=nothing,
                   uλ::Function=(i, x) -> 0., perdir=(0,), exitBC=false, T=Float64) where D
         Ng = N .+ 2
         Nd = (Ng..., D)
         u = Array{T}(undef, Nd...) |> f; apply!(uλ, u);
-        BC!(u,U,exitBC,perdir); exitBC && exitBC!(u,u,U,0.)
-        u⁰ = copy(u)
+        BC!(u,BCTuple(U,0.,D),exitBC,perdir); exitBC && exitBC!(u,u,BCTuple(U,0.,D),0.)
+        u⁰ = copy(u);
         fv, p, σ = zeros(T, Nd) |> f, zeros(T, Ng) |> f, zeros(T, Ng) |> f
-        V, σᵥ = zeros(T, Nd) |> f, zeros(T, Ng) |> f
-        μ₀ = ones(T, Nd) |> f
-        μ₁ = zeros(T, Ng..., D, D) |> f
-        new{D,T,typeof(p),typeof(u),typeof(μ₁)}(u,u⁰,fv,p,σ,V,σᵥ,μ₀,μ₁,U,T[Δt],ν,g,exitBC,perdir)
+        V, μ₀, μ₁ = zeros(T, Nd) |> f, ones(T, Nd) |> f, zeros(T, Ng..., D, D) |> f
+        new{D,T,typeof(p),typeof(u),typeof(μ₁)}(u,u⁰,fv,p,σ,V,μ₀,μ₁,U,T[Δt],ν,g,exitBC,perdir)
     end
 end
 
@@ -127,8 +130,7 @@ end
 
 function project!(a::Flow{n},b::AbstractPoisson,w=1) where n
     dt = w*a.Δt[end]
-    @inside b.z[I] = div(I,a.u)+a.σᵥ[I]; b.x .*= dt # set source term & solution IC
-    # jldsave("solver.jld2"; l=b.L, z=b.z, x=b.x)
+    @inside b.z[I] = div(I,a.u); b.x .*= dt # set source term & solution IC
     solver!(b)
     for i ∈ 1:n  # apply solution and unscale to recover pressure
         @loop a.u[I,i] -= b.L[I,i]*∂(i,I,b.x) over I ∈ inside(b.x)
@@ -142,26 +144,28 @@ end
 Integrate the `Flow` one time step using the [Boundary Data Immersion Method](https://eprints.soton.ac.uk/369635/)
 and the `AbstractPoisson` pressure solver to project the velocity onto an incompressible flow.
 """
-@fastmath function mom_step!(a::Flow,b::AbstractPoisson)
+@fastmath function mom_step!(a::Flow{N},b::AbstractPoisson) where N
     a.u⁰ .= a.u; scale_u!(a,0)
     # predictor u → u'
+    U = BCTuple(a.U,time(a),N)
     conv_diff!(a.f,a.u⁰,a.σ,ν=a.ν,perdir=a.perdir)
-    accelerate!(a.f,time(a),a.g)
-    BDIM!(a); BC!(a.u,a.U,a.exitBC,a.perdir)
-    a.exitBC && exitBC!(a.u,a.u⁰,a.U,a.Δt[end]) # convective exit
-    project!(a,b); BC!(a.u,a.U,a.exitBC,a.perdir)
+    accelerate!(a.f,time(a),a.g,a.U)
+    BDIM!(a); BC!(a.u,U,a.exitBC,a.perdir)
+    a.exitBC && exitBC!(a.u,a.u⁰,U,a.Δt[end]) # convective exit
+    project!(a,b); BC!(a.u,U,a.exitBC,a.perdir)
     # corrector u → u¹
+    U = BCTuple(a.U,timeNext(a),N)
     conv_diff!(a.f,a.u,a.σ,ν=a.ν,perdir=a.perdir)
-    accelerate!(a.f,timeNext(a),a.g)
-    BDIM!(a); scale_u!(a,0.5); BC!(a.u,a.U,a.exitBC,a.perdir)
-    project!(a,b,0.5); BC!(a.u,a.U,a.exitBC,a.perdir)
+    accelerate!(a.f,timeNext(a),a.g,a.U)
+    BDIM!(a); scale_u!(a,0.5); BC!(a.u,U,a.exitBC,a.perdir)
+    project!(a,b,0.5); BC!(a.u,U,a.exitBC,a.perdir)
     push!(a.Δt,CFL(a))
 end
 scale_u!(a,scale) = @loop a.u[Ii] *= scale over Ii ∈ inside_u(size(a.p))
 
-function CFL(a::Flow)
+function CFL(a::Flow;Δt_max=10)
     @inside a.σ[I] = flux_out(I,a.u)
-    min(10.,inv(maximum(a.σ)+5a.ν))
+    min(Δt_max,inv(maximum(a.σ)+5a.ν))
 end
 @fastmath @inline function flux_out(I::CartesianIndex{d},u) where {d}
     s = zero(eltype(u))

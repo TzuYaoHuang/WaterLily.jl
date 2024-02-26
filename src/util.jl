@@ -1,7 +1,4 @@
 using KernelAbstractions: get_backend, @index, @kernel
-using CUDA: CuArray
-using AMDGPU: ROCArray
-GPUArray = Union{CuArray,ROCArray}
 
 @inline CI(a...) = CartesianIndex(a...)
 """
@@ -48,7 +45,6 @@ size_u(u) = splitn(size(u))
 L₂ norm of array `a` excluding ghosts.
 """
 L₂(a) = sum(abs2,@inbounds(a[I]) for I ∈ inside(a))
-L₂(a::GPUArray,R::CartesianIndices=inside(a)) = mapreduce(abs2,+,@inbounds(a[R]))
 
 """
     @inside <expr>
@@ -134,7 +130,7 @@ Base.front(I::CartesianIndex) = CI(Base.front(I.I))
 """
     apply!(f, c)
 
-Apply a vector function `f(i,x)` to the faces of a uniform staggered array `c` or 
+Apply a vector function `f(i,x)` to the faces of a uniform staggered array `c` or
 a function `f(x)` to the center of a uniform array `c`.
 """
 apply!(f,c) = hasmethod(f,Tuple{Int,CartesianIndex}) ? applyV!(f,c) : applyS!(f,c)
@@ -206,3 +202,11 @@ function BC!(a;perdir=(0,))
         end
     end
 end
+"""
+    BCTuple(f,t,N)
+
+Generate a tuple of `N` values from either a boundary condition 
+function `f(i,t)` or the tuple of boundary conditions f=(fₓ,...).
+"""
+BCTuple(f::Function,t,N)=ntuple(i->f(i,t),N)
+BCTuple(f::Tuple,t,N)=f

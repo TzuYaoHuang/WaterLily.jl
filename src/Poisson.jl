@@ -73,7 +73,26 @@ end
     return s
 end
 
-residual!(p::Poisson) = @inside p.r[I] = p.z[I]-mult(I,p.L,p.D,p.x)
+"""
+    residual!(p::Poisson)
+
+Computes the resiual `r = z-Ax` and corrects it such that
+`r = 0` if `iD==0` which ensures local satisfiability
+    and 
+`sum(r) = 0` which ensures global satisfiability.
+
+The global correction is done by adjusting all points uniformly, 
+minimizing the local effect. Other approaches are possible.
+
+Note: These corrections mean `x` is not strictly solving `Ax=z`, but
+without the corrections, no solution exists.
+"""
+function residual!(p::Poisson) 
+    @inside p.r[I] = ifelse(p.iD[I]==0,0,p.z[I]-mult(I,p.L,p.D,p.x))
+    s = sum(p.r)/length(p.r[inside(p.r)])
+    abs(s) <= 2eps(eltype(s)) && return
+    @inside p.r[I] = p.r[I]-s
+end
 
 increment!(p::Poisson) = @loop (p.r[I] = p.r[I]-mult(I,p.L,p.D,p.ϵ);
                                 p.x[I] = p.x[I]+p.ϵ[I]) over I ∈ inside(p.x)
@@ -97,30 +116,31 @@ Conjugate-Gradient smoother with Jacobi preditioning. Runs at most `it` iteratio
 but will exit early if the Gram-Schmidt update parameter `|α| < 1%` or `|r D⁻¹ r| < 1e-8`.
 Note: This runs for general backends and is the default smoother.
 """
-function pcg!(p::Poisson;it=32)
+function pcg!(p::Poisson{T};it=32) where T
     x,r,ϵ,z = p.x,p.r,p.ϵ,p.z
     @inside z[I] = ϵ[I] = r[I]*p.iD[I]
     insideI = inside(x) # [insideI]
-    rho = r ⋅ z
-    abs(rho)<1e-12 && return
+    rho = T(r⋅z)
+    abs(rho)<10eps(T) && return
     for i in 1:it
         BC!(ϵ;perdir=p.perdir)
         @inside z[I] = mult(I,p.L,p.D,ϵ)
-        alpha = rho/(z[insideI]⋅ϵ[insideI])
+        alpha = rho/T(z[insideI]⋅ϵ[insideI])
         @loop (x[I] += alpha*ϵ[I];
                r[I] -= alpha*z[I]) over I ∈ inside(x)
         (i==it || abs(alpha)<1e-2) && return
         @inside z[I] = r[I]*p.iD[I]
-        rho2 = r⋅z
-        abs(rho2)<1e-8 && return
+        rho2 = T(r⋅z)
+        abs(rho2)<10eps(T) && return
         beta = rho2/rho
         @inside ϵ[I] = beta*ϵ[I]+z[I]
-        rho = rho2        
+        rho = rho2
     end
 end
 smooth!(p) = pcg!(p)
 
 L₂(p::Poisson) = p.r ⋅ p.r # special method since outside(p.r)≡0
+L∞(p::Poisson) = maximum(abs.(p.r))
 
 """
     solver!(A::Poisson;log,tol,itmx)
