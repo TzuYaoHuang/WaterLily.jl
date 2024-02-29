@@ -2,7 +2,7 @@ using ForwardDiff
 using Printf
 using JLD2
 using Combinatorics
-using Statistics
+using Statistics: mean
 using StaticArrays
 using Interpolations
 
@@ -57,32 +57,34 @@ calke = false
 Integrate the `Flow` one time step using the [Boundary Data Immersion Method](https://eprints.soton.ac.uk/369635/)
 and the `AbstractPoisson` pressure solver to project the velocity onto an incompressible flow.
 """
-@fastmath function mom_step!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody)
+@fastmath function mom_step!(a::Flow{D},b::AbstractPoisson,c::cVOF,d::AbstractBody) where D
     a.u⁰ .= a.u;
-    smoothStep = 5
+    smoothStep = 2
 
     # predictor u → u'
+    U = BCTuple(a.U,time(a),D)
     advect!(a,c,c.f,a.u⁰,a.u); measure!(a,d,c;t=0,ϵ=1)
     smoothVOF!(smoothStep, c.f⁰, c.fᶠ, c.α;perdir=c.perdir)
     calke && calke!(a.σ,a.u,c.fᶠ,c.f1,c.λρ,c.ke,c.keN)
     a.u .= 0
     conv_diff2p!(a.f,a.u⁰,a.σ,c.fᶠ,c.λμ,c.λρ,a.ν,perdir=a.perdir)
-    accelerate!(a.f,time(a),a.g)
-    BDIM!(a); BC!(a.u,a.U,a.exitBC,a.perdir)
+    accelerate!(a.f,time(a),a.g,a.U)
+    BDIM!(a); BC!(a.u,U,a.exitBC,a.perdir)
     calke && calke!(a.σ,a.u,c.f,c.f1,c.λρ,c.ke,c.keN)
     calculateL!(a,c); update!(b)
-    project!(a,b); BC!(a.u,a.U,a.exitBC,a.perdir)
+    project!(a,b); BC!(a.u,U,a.exitBC,a.perdir)
     calke && calke!(a.σ,a.u,c.f,c.f1,c.λρ,c.ke,c.keN)
 
     # corrector u → u¹
+    U = BCTuple(a.U,timeNext(a),D)
     advect!(a,c,c.f⁰,a.u⁰,a.u); measure!(a,d,c;t=0,ϵ=1)
     smoothVOF!(smoothStep, c.f, c.fᶠ, c.α;perdir=c.perdir)
     conv_diff2p!(a.f,a.u,a.σ,c.fᶠ,c.λμ,c.λρ,a.ν,perdir=a.perdir)
-    accelerate!(a.f,timeNext(a),a.g)
-    BDIM!(a); scale_u!(a,0.5); BC!(a.u,a.U,a.exitBC,a.perdir)
+    accelerate!(a.f,timeNext(a),a.g,a.U)
+    BDIM!(a); scale_u!(a,0.5); BC!(a.u,U,a.exitBC,a.perdir)
     calke && calke!(a.σ,a.u,c.fᶠ,c.f1,c.λρ,c.ke,c.keN)
     calculateL!(a,c); update!(b)
-    project!(a,b,0.5); BC!(a.u,a.U,a.exitBC,a.perdir)
+    project!(a,b,0.5); BC!(a.u,U,a.exitBC,a.perdir)
     calke && calke!(a.σ,a.u,c.fᶠ,c.f1,c.λρ,c.ke,c.keN)
     c.f .= c.f⁰
 
@@ -145,6 +147,7 @@ lowBoundaryConv!(r,u,Φ,ν,i,j,N,::Val{true}) = @loop (
 upperBoundaryDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N,::Val{true}) = @loop r[I-δ(j,I),i] -= Φ[CIj(j,I,2)] over I ∈ slice(N,N[j],j,2)
 upperBoundaryConv!(r,u,Φ,ν,i,j,N,::Val{true}) = @loop r[I-δ(j,I),i] -= Φ[CIj(j,I,2)] over I ∈ slice(N,N[j],j,2)
 
+function measure!(a::Flow,body::NoBody,c::cVOF;t=0,ϵ=1) a.μ₀ .= 1 end
 function measure!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,t=0)
     measure!(a,d,c;t=0,ϵ=1)
     calculateL!(a,c)
@@ -438,7 +441,7 @@ f: befor smooth
 sf: after smooth
 rf: buffer
 """
-function smoothVOF!(itm, f::AbstractArray{T,d}, sf::AbstractArray{T,d}, rf::AbstractArray{T,d};perdir=(0,),kelli=true) where {T,d}
+function smoothVOF!(itm, f::AbstractArray{T,d}, sf::AbstractArray{T,d}, rf::AbstractArray{T,d};perdir=(0,),kelli=false) where {T,d}
     (itm!=0)&&(rf .= f)
     α,β,γ = 1,1,1
     for it ∈ 1:itm
