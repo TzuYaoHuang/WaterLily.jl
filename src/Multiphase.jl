@@ -407,7 +407,7 @@ function crossSummation(f::AbstractArray{T,n},I,d) where {T,n}
     end
     return a
 end
-getAnotherDir(d,n) = filter(i-> i≠d,(1:n...,))
+
 
 
 
@@ -746,6 +746,183 @@ function calculateL!(μ₀,f::AbstractArray{T,D},λρ,perdir) where {T,D}
 end
 
 
+# +++++++ Surface tension
+
+"""
+    getCurvature(I,f,i)
+
+Formula from [Patel et al. (2019)](https://doi.org/10.1016/j.compfluid.2019.104263) or on [Basilisk.fr](http://basilisk.fr/src/curvature.h).
+Cross derivaties from [Wikipedia](https://en.wikipedia.org/wiki/Finite_difference#Multivariate_finite_differences).
+This function has been dispatched for 2D and 3D.
+"""
+function getCurvature(I::CartesianIndex{3},f::AbstractArray{T,3},i) where {T}
+    ix,iy = getXYdir(i)
+    H = @SMatrix [
+        getPopinetHeight(I+xUnit*δd(ix,I)+yUnit*δd(iy,I),f,i)
+        for xUnit∈-1:1,yUnit∈-1:1
+    ]
+    Hx = (H[3,2] - H[1,2])/2
+    Hy = (H[2,3] - H[2,1])/2
+    filter = 0.2
+    Hxx= (
+            (H[3,2] + H[1,2] - 2*H[2,2]) + 
+            (H[3,1] + H[1,1] - 2*H[2,1])*filter +
+            (H[3,3] + H[1,3] - 2*H[2,3])*filter
+        )/(1+2*filter)
+    Hyy= (
+            (H[2,3] + H[2,1] - 2*H[2,2]) + 
+            (H[1,3] + H[1,1] - 2*H[1,2])*filter +
+            (H[3,3] + H[3,1] - 2*H[3,2])*filter
+        )/(1+2*filter)
+    Hxy= (H[3,3] + H[1,1] - H[3,1] - H[1,3])/4
+    return (Hxx*(1+Hy^2) + Hyy*(1+Hx^2) - 2Hxy*Hx*Hy)/(1+Hx^2+Hy^2)^1.5
+end
+function getCurvature(I::CartesianIndex{2},f::AbstractArray{T,2},i) where {T}
+    ix = getXdir(i)
+    H = @SArray [
+        getPopinetHeight(I+xUnit*δd(ix,I),f,i)
+        for xUnit∈-1:1
+    ]
+    Hₓ = (H[2]-H[0])/2
+    Hₓₓ= (H[2]+H[0]-2H[1])
+    return Hₓₓ/(1+Hₓ^2)^1.5
+end
+
+
+"""
+    getPopinetHeight(I,f,i)
+
+Calculate water height of a single column with methods considering the adaptive cell height and if not working, switch to the traditional 3x7 column configuration.
+"""
+function getPopinetHeight(I,f,i)
+    H,consistent = getPopinetHeightAdaptive(I,f,i,false)
+    consistent && return H
+    H,consistent = getPopinetHeightAdaptive(I,f,i,true)
+    consistent && return H
+    H = getPopinetHeightFixed3(I,f,i)
+    return H
+end
+
+
+"""
+    getPopinetHeightAdaptive(I,f,i)
+
+Return the column height relative to cell `I` center along signed `i` direction, which points to where there is no water.
+The function is based on the Algorithm 4 from [Popinet, JCP (2009)](https://doi.org/10.1016/j.jcp.2009.04.042).
+If `monotonic` is activated, the summation will only cover the monotonic range. The monotonic condition is based on [Guo et al., Appl. Math. Model. (2015)](https://doi.org/10.1016/j.apm.2015.04.022).
+"""
+function getPopinetHeightAdaptive(I,f,i,monotonic=true)
+    consistent = true
+    Inow = I; fnow = f[Inow]; H = (fnow-0.5)
+    # Iterate till reach the cell full of air
+    finishInd = fnow<1
+    while !finishInd || containInterface(fnow)
+        Inow += δd(i,I); !validCI(Inow,f) && break
+        fnow = ifelse(monotonic && f[Inow]>fnow, 0, f[Inow])
+        H += fnow
+        finishInd = ifelse(containInterface(fnow),true,finishInd)
+    end
+    consistent = (fnow==0) && consistent
+    Inow = I; fnow = f[Inow]
+    # Iterate till reach the cell full of water
+    finishInd = fnow>0
+    while !finishInd || containInterface(fnow)
+        Inow -= δd(i,I); !validCI(Inow,f) && break
+        fnow = ifelse(monotonic && f[Inow]<fnow, 1, f[Inow])
+        H += fnow-1  # a little trick that make `I` cell center the origin
+        finishInd = ifelse(containInterface(fnow),true,finishInd)
+    end
+    consistent = (fnow==1) && consistent
+    return H,consistent
+end
+
+
+"""
+    getPopinetHeightFixed3(I,f,i)
+
+Traditional 3x7 height function proposed by [Cummins et al. (2005)](https://doi.org/10.1016/j.compstruc.2004.08.017).
+"""
+function getPopinetHeightFixed3(I,f,i)
+    consistent = true
+    Inow = I; fnow = f[Inow]; H = (fnow-0.5)
+    # Iterate till reach the cell full of air
+    finishInd = fnow<1
+    for ii = 1:3
+        Inow += δd(i,I); !validCI(Inow,f) && break
+        fnow = f[Inow]
+        H += fnow
+    end
+    consistent = (fnow==0) && consistent
+    Inow = I; fnow = f[Inow]
+    # Iterate till reach the cell full of water
+    finishInd = fnow>0
+    for ii = 1:3
+        Inow -= δd(i,I); !validCI(Inow,f) && break
+        fnow = f[Inow]
+        H += fnow-1  # a little trick that make `I` cell center the origin
+    end
+    consistent = (fnow==1) && consistent
+    return H
+end
+
+getHeightFD(I,f,i) = f[I]
+getHeightFixed1(I,f,i) = get3CellHeight(I,f,i)
+
+
+"""
+    getCurvature2D_Fit(I,f,α,n̂)
+
+Get curvature from parabola-fitting method with the constraint of interface point and interface normal.
+"""
+function getCurvature2D_Fit(I,f,α,n̂)
+    iy = majorDir(n̂,I)
+    ix = getXdir(iy)
+    point = []
+    norma = []
+    for II∈boxAroundI(I)
+        if containInterface(f[II]) && sum(abs,n̂[II,:])>0.1
+            coord = getInterfaceCenter(n̂,α,II).+II.I.-I.I
+            push!(point,transformCoord(coord,[ix,iy]))
+            push!(norma,transformCoord(n̂[II,:],[ix,iy]))
+        end
+    end
+    cenCoord = transformCoord(getInterfaceCenter(n̂,α,I),[ix,iy])
+    a = getPara2D(point,norma)
+    return 2a[1]/(1+(2a[1]*cenCoord[1]+a[2])^2)^1.5
+end
+
+"""
+    getPara2D(point,norma)
+
+Return coefficients of 2d parabola from given points and normal.
+Note that the parabola cannot be an inclined one it should either be y = f(x) or x = g(y). No xy term present.
+"""
+function getPara2D(point,norma)
+    nPoint = length(point)
+    A = zeros(2nPoint,3)
+    b = zeros(2nPoint)
+    for i∈1:nPoint
+        x,y = point[i]
+        nx,ny = norma[i]
+        A[2i-1:2i,:] = [x^2 x 1; 2ny*x ny 0]
+        b[2i-1:2i] = [y;-nx]
+    end
+    return (A'*A)\(A'*b)
+end
+
+
+"""
+    getInterfaceCenter(n̂,α,I)
+
+To calculate the quasi-center of line or plane segments in cell `I` by projecting the cell center to the plane.
+"""
+function getInterfaceCenter(n̂::AbstractArray{T,nv},α::AbstractArray{T,n},I::CartesianIndex{n}) where{T,n,nv}
+    nLocal = @views n̂[I,:]
+    dis = (0.5sum(nLocal) - α[I])/√sum(abs2,nLocal)
+    return -dis*nLocal/√sum(abs2,nLocal)
+end
+
+
 
 # +++++++ Auxiliary functions for multiphase calculation
 
@@ -786,6 +963,25 @@ end
 
 
 """
+    sortArg(a,b(,c))
+
+Sort argument according to its absolute value. Support 2 or 3D
+"""
+function sortArg(a,b,c)
+    α,β,γ = copysign(1,a),copysign(2,b),copysign(3,c)
+    if (abs(a)<abs(c)) α,γ = γ,α; a,c = c,a end
+    if (abs(a)<abs(b)) α,β = β,α; a,b = b,a end
+    if (abs(b)<abs(c)) β,γ = γ,β; b,c = c,b end
+    return α,β,γ
+end
+function sortArg(a,b)
+    α,β = copysign(1,a),copysign(2,b)
+    if (abs(a)<abs(b)) α,β = β,α; a,b = b,a end
+    return α,β
+end
+
+
+"""
     myargmax(n,vec)
 
 Return where is the maximum since the original `argmax` function in julia is not working in GPU environment.
@@ -808,7 +1004,7 @@ end
 """
     boxAroundI(I::CartesianIndex{D})
 
-Return 3 surrunding cells in each diraction of I, including diagonal ones.
+Return 3 surrunding cells in each direction of I, including diagonal ones.
 The return grid number adds up to 3ᴰ 
 """
 boxAroundI(I::CartesianIndex{D}) where D = (I-oneunit(I)):(I+oneunit(I))
@@ -834,4 +1030,22 @@ function calke!(σ,u,f,f1,λρ,ke,keN)
     push!(ke,Statistics.mean(@views σ[inside(σ)]))
     @inside σ[I] = ρkeI(I,u,f1,λρ)
     push!(keN,Statistics.mean(@views σ[inside(σ)]))
+end
+
+"""
+    δd(i,I)
+
+It is still coordinate shifting stuff but with direction (+/-) support for `i`.
+"""
+δd(i,I) = sign(i)*δ(abs(i),I)
+
+containInterface(f) = (f≠0) && (f≠1)
+validCI(I::CartesianIndex{D},f::AbstractArray{T,D}) where {T,D} = all(ntuple(i->1,D) .≤ I.I .≤ size(f))
+getXdir(i) = ifelse(abs(i)==1,-2sign(i),sign(i))
+getXYdir(i) = (sign(i)*((abs(i))%3+1),(abs(i)+1)%3+1)
+getAnotherDir(d,n) = filter(i-> i≠d,(1:n...,))
+transformCoord(coord,perm) = sign.(perm).*coord[abs.(perm)]
+function majorDir(n̂,I::CartesianIndex{D}) where D
+    i = myargmax(D,@views n̂[I,:])
+    return copysign(i,n̂[I,i])
 end
