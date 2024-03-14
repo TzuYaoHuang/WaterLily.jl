@@ -5,6 +5,7 @@ using Combinatorics
 using Statistics: mean
 using StaticArrays
 using Interpolations
+using Random
 
 
 """
@@ -210,8 +211,9 @@ function updateVOF!(
 
     # Go to the quasi-Strang scheme:
     # I alterate the order of direction split to avoid bias.
-    opOrder = shuffle(@SArray [i for i∈1:D])
-    opCoeff = @SArray ones(T,D)
+    # TODO: this array allocation take too much time but D is not known during the compilation time so static array not possible
+    opOrder = shuffle(1:D)
+    opCoeff = ones(T,D)
 
     # calculate for dilation term
     @loop c̄[I] = f[I] <= 0.5 ? 0 : 1 over I ∈ CartesianIndices(f)
@@ -783,8 +785,8 @@ function getCurvature(I::CartesianIndex{2},f::AbstractArray{T,2},i) where {T}
         getPopinetHeight(I+xUnit*δd(ix,I),f,i)
         for xUnit∈-1:1
     ]
-    Hₓ = (H[2]-H[0])/2
-    Hₓₓ= (H[2]+H[0]-2H[1])
+    Hₓ = (H[3]-H[1])/2
+    Hₓₓ= (H[3]+H[1]-2H[2])
     return Hₓₓ/(1+Hₓ^2)^1.5
 end
 
