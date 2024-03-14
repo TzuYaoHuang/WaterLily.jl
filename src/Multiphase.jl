@@ -30,7 +30,6 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
     λμ :: T   # ratio of dynamic viscosity (air/water)
     ke ::Vector{T}
     keN::Vector{T}
-    strang :: Vector{Int}
     f1 :: Sf
     function cVOF(N::NTuple{D}, n̂place, αplace; arr=Array, InterfaceSDF::Function=(x) -> 5-x[1], T=Float64, perdir=(0,), dirdir=(0,),λμ=1e-2,λρ=1e-3) where D
         Ng = N .+ 2  # scalar field size
@@ -44,7 +43,7 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
         f⁰ = copy(f)
         smoothVOF!(0, f, fᶠ, α;perdir=perdir)
         f1 = ones(T, Ng) |> arr
-        new{D,T,typeof(f),typeof(n̂)}(f,f⁰,fᶠ,n̂,α,c̄,perdir,dirdir,λρ,λμ,[],[],[0],f1)
+        new{D,T,typeof(f),typeof(n̂)}(f,f⁰,fᶠ,n̂,α,c̄,perdir,dirdir,λρ,λμ,[],[],f1)
     end
 end
 
@@ -191,28 +190,30 @@ It calculates the volume fraction after one fluxing.
 Volume fraction field `f` is being fluxed with the averaged of two velocity -- `u¹` and `u²`.
 """
 advect!(a::Flow{D}, c::cVOF, f=c.f, u¹=a.u⁰, u²=a.u) where {D} = updateVOF!(
-    a.Δt[end], f, c.fᶠ, c.n̂, c.α, u¹, u², c.c̄, c.strang; perdir=a.perdir,dirdir=c.dirdir
+    a.Δt[end], f, c.fᶠ, c.n̂, c.α, u¹, u², c.c̄; perdir=a.perdir,dirdir=c.dirdir
 )
 function updateVOF!(
         δt, f::AbstractArray{T,D}, fᶠ::AbstractArray{T,D}, 
         n̂::AbstractArray{T,Dv}, α::AbstractArray{T,D}, 
-        u::AbstractArray{T,Dv}, u⁰::AbstractArray{T,Dv}, c̄, strang; perdir=(0,),dirdir=(0,)
+        u::AbstractArray{T,Dv}, u⁰::AbstractArray{T,Dv}, c̄; perdir=(0,),dirdir=(0,)
     ) where {T,D,Dv}
     tol = 10eps(eltype(f))
 
     # Gil Strang splitting: see https://www.asc.tuwien.ac.at/~winfried/splitting/
-    if D==2
-        opOrder = [2,1,2]
-        opCoeff = [0.5,1.0,0.5]
-    elseif D==3
-        opOrder = [3,2,1,2,3]
-        opCoeff = [0.5,0.5,1.0,0.5,0.5]
-    end
+    # if D==2
+    #     opOrder = @SArray[2,1,2]
+    #     opCoeff = @SArray[0.5,1.0,0.5]
+    # elseif D==3
+    #     opOrder = @SArray[3,2,1,2,3]
+    #     opCoeff = @SArray[0.5,0.5,1.0,0.5,0.5]
+    # end
 
-    # opOrder = [(i+strang[1])%D+1 for i∈1:D] #nthperm(collect(1:D),rand(1:factorial(D)))
-    # opCoeff = [1.0 for i∈1:D]
-    # strang[1] +=1
+    # Go to the quasi-Strang scheme:
+    # I alterate the order of direction split to avoid bias.
+    opOrder = shuffle(@SArray [i for i∈1:D])
+    opCoeff = @SArray ones(T,D)
 
+    # calculate for dilation term
     @loop c̄[I] = f[I] <= 0.5 ? 0 : 1 over I ∈ CartesianIndices(f)
     for iOp ∈ CartesianIndices(opOrder)
         fᶠ .= 0
