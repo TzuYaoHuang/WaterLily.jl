@@ -22,6 +22,7 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
     f :: Sf  # cell-averaged color function (volume fraction field, VOF)
     f⁰:: Sf  # cell-averaged color function. Need to store it because Heun Correction step
     fᶠ:: Sf  # place to store flux or smoothed VOF
+    fᵐ:: Sf  # place to store VOF value at a face due to the surface tension step
     n̂ :: Vf  # normal vector of the surfaces in cell
     α :: Sf  # intercept of intercace in cell: norm ⋅ x = α
     c̄ :: AbstractArray{Int8}  # color function at the cell center
@@ -29,22 +30,25 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
     dirdir :: NTuple  # Dirichlet directions
     λρ :: T   # ratio of density (air/water)
     λμ :: T   # ratio of dynamic viscosity (air/water)
+    η  :: T   # the surface tension
     ke ::Vector{T}
     keN::Vector{T}
     f1 :: Sf
-    function cVOF(N::NTuple{D}, n̂place, αplace; arr=Array, InterfaceSDF::Function=(x) -> 5-x[1], T=Float64, perdir=(0,), dirdir=(0,),λμ=1e-2,λρ=1e-3) where D
+    function cVOF(N::NTuple{D}; arr=Array, InterfaceSDF::Function=(x) -> 5-x[1], T=Float64, perdir=(0,), dirdir=(0,),λμ=1e-2,λρ=1e-3,η=0) where D
         Ng = N .+ 2  # scalar field size
         Nd = (Ng..., D)  # vector field size
         f = ones(T, Ng) |> arr
         fᶠ = copy(f)
-        n̂ = n̂place; α = αplace
+        fᵐ = copy(f)
+        n̂ = zeros(T, Nd)
+        α = zeros(T, Ng)
         c̄ = zeros(Int8, Ng) |> arr
         applyVOF!(f,α,InterfaceSDF)
         BCVOF!(f,α,n̂;perdir=perdir,dirdir=dirdir)
         f⁰ = copy(f)
         smoothVOF!(0, f, fᶠ, α;perdir=perdir)
         f1 = ones(T, Ng) |> arr
-        new{D,T,typeof(f),typeof(n̂)}(f,f⁰,fᶠ,n̂,α,c̄,perdir,dirdir,λρ,λμ,[],[],f1)
+        new{D,T,typeof(f),typeof(n̂)}(f,f⁰,fᶠ,fᵐ,n̂,α,c̄,perdir,dirdir,λρ,λμ,η,[],[],f1)
     end
 end
 
@@ -67,7 +71,7 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     smoothVOF!(smoothStep, c.f⁰, c.fᶠ, c.α;perdir=c.perdir)
     calke && calke!(a.σ,a.u,c.fᶠ,c.f1,c.λρ,c.ke,c.keN)
     a.u .= 0
-    conv_diff2p!(a.f,a.u⁰,a.σ,c.fᶠ,c.λμ,c.λρ,a.ν,perdir=a.perdir)
+    ConvDiffSurf!(a.f,a.u⁰,a.σ,c.f⁰,c.fᶠ,c.fᵐ,c.α,c.n̂,c.λμ,c.λρ,a.ν,c.η,perdir=a.perdir)
     accelerate!(a.f,time(a),a.g,a.U)
     BDIM!(a); BC!(a.u,U,a.exitBC,a.perdir)
     calke && calke!(a.σ,a.u,c.f,c.f1,c.λρ,c.ke,c.keN)
@@ -79,7 +83,7 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     U = BCTuple(a.U,timeNext(a),D)
     advect!(a,c,c.f⁰,a.u⁰,a.u); measure!(a,d,c;t=0,ϵ=1)
     smoothVOF!(smoothStep, c.f, c.fᶠ, c.α;perdir=c.perdir)
-    conv_diff2p!(a.f,a.u,a.σ,c.fᶠ,c.λμ,c.λρ,a.ν,perdir=a.perdir)
+    ConvDiffSurf!(a.f,a.u,a.σ,c.f,c.fᶠ,c.fᵐ,c.α,c.n̂,c.λμ,c.λρ,a.ν,c.η,perdir=a.perdir)
     accelerate!(a.f,timeNext(a),a.g,a.U)
     BDIM!(a); scale_u!(a,0.5); BC!(a.u,U,a.exitBC,a.perdir)
     calke && calke!(a.σ,a.u,c.fᶠ,c.f1,c.λρ,c.ke,c.keN)
@@ -91,7 +95,7 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
     push!(a.Δt,min(CFL(a,c),1.1a.Δt[end]))
 end
 
-function conv_diff2p!(r,u,Φ,fᶠ,λμ,λρ,ν;perdir=(0,))
+function ConvDiffSurf!(r,u,Φ,f,fᶠ,fbuffer,α,n̂,λμ,λρ,ν,η;perdir=(0,))
     r .= 0.
     N,n = size_u(u)
     for i ∈ 1:n, j ∈ 1:n
@@ -108,6 +112,8 @@ function conv_diff2p!(r,u,Φ,fᶠ,λμ,λρ,ν;perdir=(0,))
         # treatment for upper boundary with BCs
         upperBoundaryDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N,Val{tagper}())
     end
+
+    surfTen!(r,f,fbuffer,α,n̂,η;perdir)
 
     for i ∈ 1:n
         @loop r[I,i] /= calculateρ(i,I,fᶠ,λρ) over I ∈ inside(Φ)
@@ -167,8 +173,9 @@ function CFL(a::Flow,c::cVOF)
     fluxLimit = inv(maximum(@views a.σ[inside(a.σ)])+5*a.ν*max(1,c.λμ/c.λρ))
     @inside a.σ[I] = MaxTotalflux(I,a.u)
     cVOFLimit = 0.5*inv(maximum(@views a.σ[inside(a.σ)]))
-    # 0.8min(10.,fluxLimit,cVOFLimit)
-    0.03/maximum(abs,a.u)
+    surfTenLimit = sqrt((1+c.λρ)/(8π*c.η)) # 8 from kelli's code
+    0.8min(10.,fluxLimit,cVOFLimit,surfTenLimit)
+    # 0.03/maximum(abs,a.u)
 end
 
 # function myCFL(a::Flow,c::cVOF)
@@ -749,6 +756,18 @@ end
 
 
 # +++++++ Surface tension
+
+function surfTen!(r,f::AbstractArray{T,D},fbuffer,α,n̂,η;perdir=(0,),dirdir=(0,)) where {T,D}
+    for d∈1:D
+        @loop fbuffer[I] = ϕ(d,I,f) over I∈inside(f)
+        BC!(fbuffer)
+        reconstructInterface!(fbuffer,α,n̂,perdir=perdir,dirdir=dirdir)
+        @loop r[I,d] += containInterface(fbuffer[I]) ? η*getCurvature(I,fbuffer,majorDir(n̂,I))*-∂(d,I,f) : 0 over I∈inside(f) 
+        # @loop r[I,d] += containInterface(fbuffer[I]) ? η*-1/(0.8*64)*-∂(d,I,f) : 0 over I∈inside(f) 
+    end
+end
+
+
 
 """
     getCurvature(I,f,i)

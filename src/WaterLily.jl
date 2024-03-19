@@ -89,15 +89,15 @@ struct TwoPhaseSimulation <: AbstractSimulation
     pois :: AbstractPoisson
     function TwoPhaseSimulation(
                         dims::NTuple{N}, u_BC::NTuple{N}, L::Number;
-                        Δt=0.25, ν=0.,λμ=1e-2,λρ=1e-3, U=√sum(abs2,u_BC), ϵ=1, 
+                        Δt=0.25, ν=0.,λμ=1e-2,λρ=1e-3,η=0, U=√sum(abs2,u_BC), ϵ=1, 
                         perdir=(0,), dirdir=(0,), g=nothing,
                         uλ::Function=(i,x)->u_BC[i], exitBC=false,
                         InterfaceSDF::Function=(x) -> -5-x[1],
                         body::AbstractBody=NoBody(),T=Float32,mem=Array) where N
         flow = Flow(dims,u_BC;uλ,Δt,ν,g,T,f=mem,perdir,exitBC)
-        inter= cVOF(dims,flow.f,flow.σ; arr=mem,InterfaceSDF,T,perdir,dirdir,λμ,λρ)
+        inter= cVOF(dims; arr=mem,InterfaceSDF,T,perdir,dirdir,λμ,λρ,η)
         measure!(flow,body;ϵ)
-        new(U,L,ϵ,flow,inter,body,MultiLevelPoisson(flow.p,flow.μ₀,flow.σ;perdir))
+        new(U,L,ϵ,flow,inter,body,Poisson(flow.p,flow.μ₀,flow.σ;perdir))
     end
 end
 
