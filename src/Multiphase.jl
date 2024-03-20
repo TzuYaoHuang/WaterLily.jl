@@ -247,6 +247,7 @@ function aVOF!(
     u::AbstractArray{T,Dv}, u⁰::AbstractArray{T,Dv}, c̄; dilation=false, split=true, perdir=(0,),dirdir=(0,)
 ) where {T,D,Dv}
 
+    tol=0
     faceFlux = n̂
 
     !split && begin
@@ -254,6 +255,8 @@ function aVOF!(
             @loop faceFlux[I,d] = u[I,d]+u⁰[I,d]>0 ? (u[I,d]+u⁰[I,d])/2*δt*f[I-δ(d,I)] : (u[I,d]+u⁰[I,d])/2*δt*f[I]  over I ∈ inside_uWB(size(f),d)
         end
         @loop f[I] += -div(I,faceFlux) over I ∈ inside(f)
+        cleanWisp!(f,tol)
+        BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
     end
 
     split && begin
@@ -263,15 +266,13 @@ function aVOF!(
             fᶠ.=0
             @loop fᶠ[I] = u[I,d]+u⁰[I,d]>0 ? (u[I,d]+u⁰[I,d])/2*δt*f[I-δ(d,I)] : (u[I,d]+u⁰[I,d])/2*δt*f[I] over I ∈ inside_uWB(size(f),d)
             @loop (
-                f[I] += -∂(d,I+δ(d,I),fᶠ) + c̄[I]*(∂(d,I,u)+∂(d,I,u⁰))*0.5
+                f[I] += -∂(d,I+δ(d,I),fᶠ) + c̄[I]*(∂(d,I,u)+∂(d,I,u⁰))*0.5δt
             ) over I ∈ inside(f)
-            cleanWisp!(f,0)
+
+            cleanWisp!(f,tol)
             BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
         end
     end
-
-    cleanWisp!(f,0)
-    BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
 end
 
 """
