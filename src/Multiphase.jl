@@ -203,7 +203,7 @@ advect!(a::Flow{D}, c::cVOF, f=c.f, u¹=a.u⁰, u²=a.u) where {D} = updateVOF!(
 function updateVOF!(
         δt, f::AbstractArray{T,D}, fᶠ::AbstractArray{T,D}, 
         n̂::AbstractArray{T,Dv}, α::AbstractArray{T,D}, 
-        u::AbstractArray{T,Dv}, u⁰::AbstractArray{T,Dv}, c̄; dilation=true, perdir=(0,),dirdir=(0,)
+        u::AbstractArray{T,Dv}, u⁰::AbstractArray{T,Dv}, c̄; dilation=true, split=true, perdir=(0,),dirdir=(0,)
     ) where {T,D,Dv}
     tol = 10eps(eltype(f))
 
@@ -244,18 +244,33 @@ end
 function aVOF!(
     δt, f::AbstractArray{T,D}, fᶠ::AbstractArray{T,D}, 
     n̂::AbstractArray{T,Dv}, α::AbstractArray{T,D}, 
-    u::AbstractArray{T,Dv}, u⁰::AbstractArray{T,Dv}, c̄; dilation=false, perdir=(0,),dirdir=(0,)
+    u::AbstractArray{T,Dv}, u⁰::AbstractArray{T,Dv}, c̄; dilation=false, split=true, perdir=(0,),dirdir=(0,)
 ) where {T,D,Dv}
 
     faceFlux = n̂
 
-    for d∈1:D
-        @loop faceFlux[I,d] = u[I,d]+u⁰[I,d]>0 ? (u[I,d]+u⁰[I,d])/2*δt*f[I-δ(d,I)] : (u[I,d]+u⁰[I,d])/2*δt*f[I]  over I ∈ inside_uWB(size(f),d)
+    !split && begin
+        for d∈1:D
+            @loop faceFlux[I,d] = u[I,d]+u⁰[I,d]>0 ? (u[I,d]+u⁰[I,d])/2*δt*f[I-δ(d,I)] : (u[I,d]+u⁰[I,d])/2*δt*f[I]  over I ∈ inside_uWB(size(f),d)
+        end
+        @loop f[I] += -div(I,faceFlux) over I ∈ inside(f)
     end
 
-    @loop f[I] += -div(I,faceFlux) over I ∈ inside(f)
+    split && begin
+        @loop c̄[I] = f[I] <= 0.5 ? 0 : 1 over I ∈ CartesianIndices(f)
+        !dilation && (c̄ .= 0)
+        for d∈shuffle(1:D)
+            fᶠ.=0
+            @loop fᶠ[I] = u[I,d]+u⁰[I,d]>0 ? (u[I,d]+u⁰[I,d])/2*δt*f[I-δ(d,I)] : (u[I,d]+u⁰[I,d])/2*δt*f[I] over I ∈ inside_uWB(size(f),d)
+            @loop (
+                f[I] += -∂(d,I+δ(d,I),fᶠ) + c̄[I]*(∂(d,I,u)+∂(d,I,u⁰))*0.5
+            ) over I ∈ inside(f)
+            cleanWisp!(f,0)
+            BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
+        end
+    end
 
-    cleanWisp!(f)
+    cleanWisp!(f,0)
     BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
 end
 

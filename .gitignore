@@ -21,3 +21,6 @@ Manifest.toml
 # paraview
 *.vti
 *.pvd
+
+
+gr-temp/
