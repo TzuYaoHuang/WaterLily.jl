@@ -203,7 +203,7 @@ advect!(a::Flow{D}, c::cVOF, f=c.f, u¹=a.u⁰, u²=a.u) where {D} = updateVOF!(
 function updateVOF!(
         δt, f::AbstractArray{T,D}, fᶠ::AbstractArray{T,D}, 
         n̂::AbstractArray{T,Dv}, α::AbstractArray{T,D}, 
-        u::AbstractArray{T,Dv}, u⁰::AbstractArray{T,Dv}, c̄; perdir=(0,),dirdir=(0,)
+        u::AbstractArray{T,Dv}, u⁰::AbstractArray{T,Dv}, c̄; dilation=true, perdir=(0,),dirdir=(0,)
     ) where {T,D,Dv}
     tol = 10eps(eltype(f))
 
@@ -224,6 +224,7 @@ function updateVOF!(
 
     # calculate for dilation term
     @loop c̄[I] = f[I] <= 0.5 ? 0 : 1 over I ∈ CartesianIndices(f)
+    !dilation && (c̄ .= 0)
     for iOp ∈ CartesianIndices(opOrder)
         fᶠ .= 0
         d = opOrder[iOp]
@@ -234,38 +235,28 @@ function updateVOF!(
             f[I] += -∂(d,I+δ(d,I),fᶠ) + c̄[I]*(∂(d,I,u)+∂(d,I,u⁰))*0.5uMulp
         ) over I ∈ inside(f)
 
-        # report errors if overfill or overempty
-        maxf, maxid = findmax(f)
-        minf, minid = findmin(f)
-        if maxf-1 > tol
-            du⁰,du = abs(div(maxid,u⁰)),abs(div(maxid,u))
-            @printf("|∇⋅u⁰| = %+13.8f, |∇⋅u| = %+13.8f\n",du⁰,du)
-            errorMsg = "max VOF @ $(maxid.I) ∉ [0,1] @ iOp=$iOp which is direction $d, Δf = $(maxf-1)"
-            (du⁰+du > 10) && error(errorMsg)
-            try
-                error(errorMsg)
-            catch e
-                Base.printstyled("ERROR: "; color=:red, bold=true)
-                Base.showerror(stdout, e, Base.catch_backtrace()); println()
-            end
-        end
-        if minf < -tol
-            du⁰,du = abs(div(minid,u⁰)),abs(div(minid,u))
-            @printf("|∇⋅u⁰| = %+13.8f, |∇⋅u| = %+13.8f\n",du⁰,du)
-            errorMsg = "min VOF @ $(minid.I) ∉ [0,1] @ iOp=$iOp which is direction $d, Δf = $(-minf)"
-            (du⁰+du > 10) && error(errorMsg)
-            try
-                error(errorMsg)
-            catch e
-                Base.printstyled("ERROR: "; color=:red, bold=true)
-                Base.showerror(stdout, e, Base.catch_backtrace()); println()
-            end
-        end
-
         # cleanup Wisp
         cleanWisp!(f,tol)
         BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
     end
+end
+
+function aVOF!(
+    δt, f::AbstractArray{T,D}, fᶠ::AbstractArray{T,D}, 
+    n̂::AbstractArray{T,Dv}, α::AbstractArray{T,D}, 
+    u::AbstractArray{T,Dv}, u⁰::AbstractArray{T,Dv}, c̄; dilation=false, perdir=(0,),dirdir=(0,)
+) where {T,D,Dv}
+
+    faceFlux = n̂
+
+    for d∈1:D
+        @loop faceFlux[I,d] = u[I,d]+u⁰[I,d]>0 ? (u[I,d]+u⁰[I,d])/2*δt*f[I-δ(d,I)] : (u[I,d]+u⁰[I,d])/2*δt*f[I]  over I ∈ inside_uWB(size(f),d)
+    end
+
+    @loop f[I] += -div(I,faceFlux) over I ∈ inside(f)
+
+    cleanWisp!(f)
+    BCVOF!(f,α,n̂,perdir=perdir,dirdir=dirdir)
 end
 
 """
