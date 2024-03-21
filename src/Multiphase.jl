@@ -244,7 +244,7 @@ end
 function aVOF!(
     δt, f::AbstractArray{T,D}, fᶠ::AbstractArray{T,D}, 
     n̂::AbstractArray{T,Dv}, α::AbstractArray{T,D}, 
-    u::AbstractArray{T,Dv}, u⁰::AbstractArray{T,Dv}, c̄; dilation=false, split=true, perdir=(0,),dirdir=(0,)
+    u::AbstractArray{T,Dv}, u⁰::AbstractArray{T,Dv}, c̄; dilation=false, split=false, perdir=(0,),dirdir=(0,)
 ) where {T,D,Dv}
 
     tol=0
