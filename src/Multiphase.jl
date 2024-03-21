@@ -113,8 +113,6 @@ function ConvDiffSurf!(r,u,Φ,f,fᶠ,fbuffer,α,n̂,λμ,λρ,ν,η;perdir=(0,))
         upperBoundaryDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N,Val{tagper}())
     end
 
-    surfTen!(r,f,fbuffer,α,n̂,η;perdir)
-
     for i ∈ 1:n
         @loop r[I,i] /= calculateρ(i,I,fᶠ,λρ) over I ∈ inside(Φ)
     end
@@ -173,8 +171,8 @@ function CFL(a::Flow,c::cVOF)
     fluxLimit = inv(maximum(@views a.σ[inside(a.σ)])+5*a.ν*max(1,c.λμ/c.λρ))
     @inside a.σ[I] = MaxTotalflux(I,a.u)
     cVOFLimit = 0.5*inv(maximum(@views a.σ[inside(a.σ)]))
-    surfTenLimit = sqrt((1+c.λρ)/(8π*c.η)) # 8 from kelli's code
-    0.8min(10.,fluxLimit,cVOFLimit,surfTenLimit)
+    # surfTenLimit = sqrt((1+c.λρ)/(8π*c.η)) # 8 from kelli's code
+    0.8min(10.,fluxLimit,cVOFLimit)
     # 0.03/maximum(abs,a.u)
 end
 
