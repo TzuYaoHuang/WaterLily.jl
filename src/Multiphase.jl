@@ -43,7 +43,7 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
         n̂ = zeros(T, Nd)
         α = zeros(T, Ng)
         c̄ = zeros(Int8, Ng) |> arr
-        applyVOF!(f,α,InterfaceSDF)
+        applyVOF!(f,α,n̂,InterfaceSDF)
         BCVOF!(f,α,n̂;perdir=perdir,dirdir=dirdir)
         f⁰ = copy(f)
         smoothVOF!(0, f, fᶠ, α;perdir=perdir)
@@ -433,9 +433,9 @@ end
 """
 function getVOFFaceFlux!(d,f,α,n̂,u,u⁰,uMulp,fᶠ)
     fᶠ .= 0.0
-    @loop getVOFFaceFlux!(fᶠ,d,f,α,n̂,0.5*(u[IFace,d]+u⁰[IFace,d])*uMulp,IFace) over IFace ∈ inside_uWB(size(f),d)
+    @loop fᶠ[IFace] = getVOFFaceFlux!(d,f,α,n̂,0.5*(u[IFace,d]+u⁰[IFace,d])*uMulp,IFace) over IFace ∈ inside_uWB(size(f),d)
 end
-function getVOFFaceFlux!(fᶠ::AbstractArray{T,n},d,fIn::AbstractArray{T,n},α::AbstractArray{T,n},n̂::AbstractArray{T,nv},dl,IFace::CartesianIndex) where {T,n,nv}
+function getVOFFaceFlux!(d,fIn::AbstractArray{T,n},α::AbstractArray{T,n},n̂::AbstractArray{T,nv},dl,IFace::CartesianIndex) where {T,n,nv}
     ICell = IFace;
     flux = 0.0
     if dl == 0.0
@@ -455,7 +455,7 @@ function getVOFFaceFlux!(fᶠ::AbstractArray{T,n},d,fIn::AbstractArray{T,n},α::
             nhat[d] = nhatOrig
         end
     end
-    fᶠ[IFace] = flux
+    return flux
 end
 
 """
@@ -525,19 +525,24 @@ end
 
 
 """
-    applyVOF!(f,α,FreeSurfsdf)
+    applyVOF!(f,α,n̂,FreeSurfsdf)
 
-Given a distance function (FreeSurfsdf) for the initial free-surface, yield the volume fraction field (`f`)
+Given a distance function (FreeSurfsdf) for the initial free-surface, yield the volume fraction field (`f`).
+Assume the gradient at the center is the normal vector. Use cell center to estimate the distance.
 """
-function applyVOF!(f::AbstractArray{T,D},α::AbstractArray{T,D},FreeSurfsdf::Function) where {T,D}
+function applyVOF!(f::AbstractArray{T,D},α::AbstractArray{T,D},n̂::AbstractArray{T,Dv},FreeSurfsdf::Function) where {T,D,Dv}
     # set up the field
-    @loop applyVOF!(f,α,FreeSurfsdf,I) over I ∈ inside(f)
+    @loop applyVOF!(f,α,n̂,FreeSurfsdf,I) over I ∈ inside(f)
     # Clear Wisps in the flow
     cleanWisp!(f)
 end
-function applyVOF!(f::AbstractArray{T,D},α::AbstractArray{T,D},FreeSurfsdf::Function,I::CartesianIndex{D}) where {T,D}
+function applyVOF!(f::AbstractArray{T,D},α::AbstractArray{T,D},n̂::AbstractArray{T,Dv},FreeSurfsdf::Function,I::CartesianIndex{D}) where {T,D,Dv}
     α[I] = FreeSurfsdf(loc(0,I))  # the coordinate of the cell center
-    f[I] = clamp((√D/2 - α[I])/(√D),0,1)  # convert distance to volume fraction assume `n̂ = (1,1,...)` 
+    n̂[I,:] = ForwardDiff.gradient(FreeSurfsdf, loc(0,I))
+    sumN = 0; sumN2= 0; for i∈1:D sumN += n̂[I,i]; sumN2+= n̂[I,i]^2 end
+    α[I] = 0.5sumN-√sumN2*α[I]
+    f[I] = getVolumeFraction(n̂,I,α[I])
+    # f[I] = clamp((√D/2 - α[I])/(√D),0,1)  # convert distance to volume fraction assume `n̂ = (1,1,...)` 
 end
 
 """
@@ -612,6 +617,8 @@ Calculate intersection from volume fraction.
 These functions prepare `n̂` and `g` for `f2α`.
 Following algorithm proposed by [Scardovelli & Zaleski (2000)](https://doi.org/10.1006/jcph.2000.6567).
 """
+getIntercept(n̂::AbstractArray{T,3},I::CartesianIndex{2},g) where T = getIntercept(n̂[I,1],n̂[I,2],zero(T),g)
+getIntercept(n̂::AbstractArray{T,4},I::CartesianIndex{3},g) where T = getIntercept(n̂[I,1],n̂[I,2],n̂[I,3],g)
 getIntercept(v::AbstractArray{T,1}, g) where T = (
     length(v)==2 ?
     getIntercept(v[1], v[2], zero(T), g) :
@@ -635,6 +642,8 @@ Calculate intersection from volume fraction.
 These functions prepare `n̂` and `b` for `α2f`.
 Following algorithm proposed by [Scardovelli & Zaleski (2000)](https://doi.org/10.1006/jcph.2000.6567).
 """
+getVolumeFraction(n̂::AbstractArray{T,3},I::CartesianIndex{2},b) where T = getVolumeFraction(n̂[I,1],n̂[I,2],zero(T),b)
+getVolumeFraction(n̂::AbstractArray{T,4},I::CartesianIndex{3},b) where T = getVolumeFraction(n̂[I,1],n̂[I,2],n̂[I,3],b)
 getVolumeFraction(v::AbstractArray{T,1}, b) where T = (
     length(v)==2 ?
     getVolumeFraction(v[1], v[2], zero(T), b) :
