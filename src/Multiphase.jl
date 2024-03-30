@@ -283,48 +283,45 @@ function reconstructInterface!(f,α,n̂;perdir=(0,),dirdir=(0,))
 end
 function reconstructInterface!(f::AbstractArray{T,n},α::AbstractArray{T,n},n̂::AbstractArray{T,nv},N,I;perdir=(0,),dirdir=(0,)) where {T,n,nv}
     fc = f[I]
-    nhat = @views n̂[I,:] #nzeros(T,n)
     if (fc==0.0 || fc==1.0)
-        f[I] = fc
         for i∈1:n n̂[I,i] = 0 end
     else
-        getInterfaceNormal_WY!(f,nhat,N,I;perdir,dirdir)
-        α[I] = getIntercept(nhat, fc)
-        for i∈1:n n̂[I,i] = nhat[i] end
+        getInterfaceNormal_WY!(f,n̂,N,I;perdir,dirdir)
+        α[I] = getIntercept(n̂,I, fc)
     end
 end
 
 
 
 """
-    getInterfaceNormal_WY!(f,nhat,N,I)
+    getInterfaceNormal_WY!(f,n̂,N,I)
 
 Normal reconstructure scheme from [Weymouth & Yue (2010)](https://doi.org/10.1016/j.jcp.2009.12.018). It's 3x3 compact height function with some checks.
 """
-function getInterfaceNormal_WY!(f::AbstractArray{T,n},nhat,N,I;perdir=(0,),dirdir=(0,)) where {T,n}
-    getInterfaceNormal_CD!(f,nhat,I)
-    dc = myargmax(n,nhat)
+function getInterfaceNormal_WY!(f::AbstractArray{T,n},n̂,N,I;perdir=(0,),dirdir=(0,)) where {T,n}
+    getInterfaceNormal_CD!(f,n̂,I)
+    dc = myargmax(n,n̂,I)
     for d ∈ 1:n
         if (d == dc)
-            nhat[d] = copysign(1.0,nhat[d])
+            n̂[I,d] = copysign(1.0,n̂[I,d])
         else
             hu = get3CellHeight(I+δ(d,I), f, dc)
             hc = get3CellHeight(I       , f, dc)
             hd = get3CellHeight(I-δ(d,I), f, dc)
-            nhat[d] = -(hu-hd)*0.5
+            n̂[I,d] = -(hu-hd)*0.5
             if d ∉ dirdir && d ∉ perdir
                 if I[d] == N[d]-1
-                    nhat[d] = -(hc - hd)
+                    n̂[I,d] = -(hc - hd)
                 elseif I[d] == 2
-                    nhat[d] = -(hu - hc)
+                    n̂[I,d] = -(hu - hc)
                 end
             # elseif (hu+hd==0.0 || hu+hd==6.0)
             #     nhat .= 0.0
-            elseif abs(nhat[d]) > 0.5
-                if (nhat[d]*(fc-0.5) >= 0.0)
-                    nhat[d] = -(hu - hc)
+            elseif abs(n̂[I,d]) > 0.5
+                if (n̂[I,d]*(fc-0.5) >= 0.0)
+                    n̂[I,d] = -(hu - hc)
                 else
-                    nhat[d] = -(hc - hd)
+                    n̂[I,d] = -(hc - hd)
                 end
             end
         end
@@ -404,9 +401,9 @@ end
 Calculate the interface normal from the central difference scheme with the closest neighbor considered (4 neighbor in 3D).
 Note that `nhat` is view of `n̂[I,:]`.
 """
-function getInterfaceNormal_CD!(f::AbstractArray{T,n},nhat,I) where {T,n}
+function getInterfaceNormal_CD!(f::AbstractArray{T,n},n̂,I) where {T,n}
     for d ∈ 1:n
-        nhat[d] = (crossSummation(f,I-δ(d,I),d)-crossSummation(f,I+δ(d,I),d))*0.5
+        n̂[I,d] = (crossSummation(f,I-δ(d,I),d)-crossSummation(f,I+δ(d,I),d))*0.5
     end
 end
 function crossSummation(f::AbstractArray{T,n},I,d) where {T,n}
@@ -442,17 +439,18 @@ function getVOFFaceFlux!(d,fIn::AbstractArray{T,n},α::AbstractArray{T,n},n̂::A
     else
         if (dl > 0.0) ICell -= δ(d,IFace) end
         f = fIn[ICell]
-        nhat = @views n̂[ICell,:]
-        if (sum(abs,nhat)==0.0 || f == 0.0 || f == 1.0)
+        sumAbsNhat = 0
+        for ii∈1:n sumAbsNhat+= abs(n̂[ICell,ii]) end
+        if (sumAbsNhat==0.0 || f == 0.0 || f == 1.0)
             flux = f*dl
         else
             dl = dl
             a = α[ICell]
-            if (dl > 0.0) a -= nhat[d]*(1.0-dl) end
-            nhatOrig = nhat[d]
-            nhat[d] *= abs(dl)
-            flux = getVolumeFraction(nhat, a)*dl
-            nhat[d] = nhatOrig
+            if (dl > 0.0) a -= n̂[ICell,d]*(1.0-dl) end
+            nhatOrig = n̂[ICell,d]
+            n̂[ICell,d] *= abs(dl)
+            flux = getVolumeFraction(n̂,ICell, a)*dl
+            n̂[ICell,d] = nhatOrig
         end
     end
     return flux
@@ -767,10 +765,12 @@ end
 # +++++++ Surface tension
 
 function surfTen!(r,f::AbstractArray{T,D},fbuffer,α,n̂,η;perdir=(0,),dirdir=(0,)) where {T,D}
+    N = size(f)
     for d∈1:D
+        n̂ .= 0
         @loop fbuffer[I] = ϕ(d,I,f) over I∈inside(f)
-        BC!(fbuffer)
-        reconstructInterface!(fbuffer,α,n̂,perdir=perdir,dirdir=dirdir)
+        BC!(fbuffer;perdir)
+        @loop containInterface(fbuffer[I]) && getInterfaceNormal_WY!(fbuffer,n̂,N,I) over I ∈ inside(f)
         @loop r[I,d] += containInterface(fbuffer[I]) ? η*getCurvature(I,fbuffer,majorDir(n̂,I))*-∂(d,I,f) : 0 over I∈inside(f) 
         # @loop r[I,d] += containInterface(fbuffer[I]) ? η*-1/(0.8*64)*-∂(d,I,f) : 0 over I∈inside(f) 
     end
@@ -807,7 +807,7 @@ function getCurvature(I::CartesianIndex{3},f::AbstractArray{T,3},i) where {T}
     Hxy= (H[3,3] + H[1,1] - H[3,1] - H[1,3])/4
     return (Hxx*(1+Hy^2) + Hyy*(1+Hx^2) - 2Hxy*Hx*Hy)/(1+Hx^2+Hy^2)^1.5
 end
-function getCurvature(I::CartesianIndex{2},f::AbstractArray{T,2},i) where {T}
+function getCurvature(I::CartesianIndex{2},f::AbstractArray{T,2},i,returnH=false) where {T}
     ix = getXdir(i)
     H = @SArray [
         getPopinetHeight(I+xUnit*δd(ix,I),f,i)
@@ -815,6 +815,7 @@ function getCurvature(I::CartesianIndex{2},f::AbstractArray{T,2},i) where {T}
     ]
     Hₓ = (H[3]-H[1])/2
     Hₓₓ= (H[3]+H[1]-2H[2])
+    returnH && return H
     return Hₓₓ/(1+Hₓ^2)^1.5
 end
 
@@ -872,12 +873,12 @@ end
 
 Traditional 3x7 height function proposed by [Cummins et al. (2005)](https://doi.org/10.1016/j.compstruc.2004.08.017).
 """
-function getPopinetHeightFixed3(I,f,i)
+function getPopinetHeightFixed3(I,f,i,hh=3)
     consistent = true
     Inow = I; fnow = f[Inow]; H = (fnow-0.5)
     # Iterate till reach the cell full of air
     finishInd = fnow<1
-    for ii = 1:3
+    for ii = 1:hh
         Inow += δd(i,I); !validCI(Inow,f) && break
         fnow = f[Inow]
         H += fnow
@@ -886,7 +887,7 @@ function getPopinetHeightFixed3(I,f,i)
     Inow = I; fnow = f[Inow]
     # Iterate till reach the cell full of water
     finishInd = fnow>0
-    for ii = 1:3
+    for ii = 1:hh
         Inow -= δd(i,I); !validCI(Inow,f) && break
         fnow = f[Inow]
         H += fnow-1  # a little trick that make `I` cell center the origin
@@ -1029,6 +1030,18 @@ function myargmax(n,vec)
     end
     return iMax
 end
+function myargmax(n,vec,I)
+    max = abs2(vec[I,1])
+    iMax = 1
+    for i∈2:n
+        cur = abs2(vec[I,i])
+        if cur > max
+            max = cur
+            iMax = i
+        end
+    end
+    return iMax
+end
 
 
 """
@@ -1076,6 +1089,6 @@ getXYdir(i) = (sign(i)*((abs(i))%3+1),(abs(i)+1)%3+1)
 getAnotherDir(d,n) = filter(i-> i≠d,(1:n...,))
 transformCoord(coord,perm) = sign.(perm).*coord[abs.(perm)]
 function majorDir(n̂,I::CartesianIndex{D}) where D
-    i = myargmax(D,@views n̂[I,:])
+    i = myargmax(D,n̂,I)
     return copysign(i,n̂[I,i])
 end
