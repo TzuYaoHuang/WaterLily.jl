@@ -113,7 +113,7 @@ function ConvDiffSurf!(r,u,Φ,f,fᶠ,fbuffer,α,n̂,λμ,λρ,ν,η;perdir=(0,))
         upperBoundaryDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N,Val{tagper}())
     end
 
-    surfTen!(r,f,fbuffer,α,n̂,η;perdir)
+    η≠0 && surfTen!(r,f,fbuffer,α,n̂,η;perdir)
 
     for i ∈ 1:n
         @loop r[I,i] /= calculateρ(i,I,fᶠ,λρ) over I ∈ inside(Φ)
@@ -318,7 +318,7 @@ function getInterfaceNormal_WY!(f::AbstractArray{T,n},n̂,N,I;perdir=(0,),dirdir
             # elseif (hu+hd==0.0 || hu+hd==6.0)
             #     nhat .= 0.0
             elseif abs(n̂[I,d]) > 0.5
-                if (n̂[I,d]*(fc-0.5) >= 0.0)
+                if (n̂[I,d]*(f[I]-0.5) >= 0.0)
                     n̂[I,d] = -(hu - hc)
                 else
                     n̂[I,d] = -(hc - hd)
