@@ -168,13 +168,14 @@ end
     return s
 end
 
-function CFL(a::Flow,c::cVOF)
+function CFL(a::Flow{D},c::cVOF;Δt_max=10) where D
     @inside a.σ[I] = flux_out(I,a.u)
     fluxLimit = inv(maximum(@views a.σ[inside(a.σ)])+5*a.ν*max(1,c.λμ/c.λρ))
     @inside a.σ[I] = MaxTotalflux(I,a.u)
     cVOFLimit = 0.5*inv(maximum(@views a.σ[inside(a.σ)]))
     surfTenLimit = sqrt((1+c.λρ)/(8π*c.η)) # 8 from kelli's code
-    0.8min(10.,fluxLimit,cVOFLimit,surfTenLimit)
+    gravLimit = isnothing(a.g) ? Δt_max : 1/√sum((i)->a.g(i,time(a))^2,1:D)
+    0.8min(Δt_max,fluxLimit,cVOFLimit,surfTenLimit,gravLimit)
     # 0.03/maximum(abs,a.u)
 end
 
@@ -554,7 +555,6 @@ rf: buffer
 """
 function smoothVOF!(itm, f::AbstractArray{T,d}, sf::AbstractArray{T,d}, rf::AbstractArray{T,d};perdir=(0,),kelli=false) where {T,d}
     (itm!=0)&&(rf .= f)
-    α,β,γ = 1,1,1
     for it ∈ 1:itm
         sf .= 0
         @loop sumAvg!(sf,rf,I) over I ∈ inside(rf)
@@ -566,7 +566,7 @@ function smoothVOF!(itm, f::AbstractArray{T,d}, sf::AbstractArray{T,d}, rf::Abst
 end
 
 function sumAvg!(sf::AbstractArray{T,d},rf::AbstractArray{T,d},I) where {T,d}
-    α,β,γ = 1,1,1
+    α,β,γ = 1,1,2
     for j∈1:d
         sf[I] += α*rf[I+δ(j, I)] + β*rf[I-δ(j, I)] + γ*rf[I]
     end
