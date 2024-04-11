@@ -23,7 +23,9 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
     f⁰:: Sf  # cell-averaged color function. Need to store it because Heun Correction step
     fᶠ:: Sf  # place to store flux or smoothed VOF
     fᵐ:: Sf  # place to store VOF value at a face due to the surface tension step
-    ρu:: Vf  # place the geometric face and mass flux
+    ρuf:: Vf  # place the geometric face and mass flux
+    ρu⁰:: Vf  # 
+    ρu :: Vf  # 
     n̂ :: Vf  # normal vector of the surfaces in cell
     α :: Sf  # intercept of intercace in cell: norm ⋅ x = α
     c̄ :: AbstractArray{Int8}  # color function at the cell center
@@ -41,7 +43,9 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
         f = ones(T, Ng) |> arr
         fᶠ = copy(f)
         fᵐ = copy(f)
-        ρu= zeros(T, Nd)
+        ρuf= zeros(T, Nd)
+        ρu⁰= zeros(T, Nd)
+        ρu = zeros(T, Nd)
         n̂ = zeros(T, Nd)
         α = zeros(T, Ng)
         c̄ = zeros(Int8, Ng) |> arr
@@ -50,7 +54,7 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
         f⁰ = copy(f)
         smoothVOF!(0, f, fᶠ, α;perdir=perdir)
         f1 = ones(T, Ng) |> arr
-        new{D,T,typeof(f),typeof(n̂)}(f,f⁰,fᶠ,fᵐ,ρu,n̂,α,c̄,perdir,dirdir,λρ,λμ,η,[],[],f1)
+        new{D,T,typeof(f),typeof(n̂)}(f,f⁰,fᶠ,fᵐ,ρuf,ρu⁰,ρu,n̂,α,c̄,perdir,dirdir,λρ,λμ,η,[],[],f1)
     end
 end
 
@@ -63,21 +67,22 @@ calke = false
 Integrate the `Flow` one time step using the [Boundary Data Immersion Method](https://eprints.soton.ac.uk/369635/)
 and the `AbstractPoisson` pressure solver to project the velocity onto an incompressible flow.
 """
-@fastmath function mom_step!(a::Flow{D},b::AbstractPoisson,c::cVOF,d::AbstractBody) where D 
-    a.u⁰ .= a.u;
+@fastmath function mom_step!(a::Flow{D},b::AbstractPoisson,c::cVOF,d::AbstractBody) where D
+    a.u⁰ .= a.u 
     smoothStep = 0
 
     # predictor u → u'
     U = BCTuple(a.U,time(a),D)
-    c.ρu .= 0
+    u2ρu(a.u,c.ρu,c.f,c.λρ); BC!(c.ρu,U,a.exitBC,a.perdir); c.ρu⁰ .= c.ρu;
+    c.ρuf .= 0
     advect!(a,c,c.f,a.u⁰,a.u); measure!(a,d,c;t=0,ϵ=1)
-    BC!(c.ρu,U,a.exitBC,a.perdir); c.ρu ./= a.Δt[end]
+    BC!(c.ρuf,U,a.exitBC,a.perdir); c.ρuf ./= a.Δt[end]
     smoothVOF!(smoothStep, c.f, c.fᶠ, c.α;perdir=c.perdir)
     calke && calke!(a.σ,a.u,c.fᶠ,c.f1,c.λρ,c.ke,c.keN)
     a.u .= 0
-    ConvDiffSurf!(a.f,a.u⁰,c.ρu,a.σ,c.f⁰,c.fᶠ,c.fᵐ,c.α,c.n̂,c.λμ,c.λρ,a.ν,c.η,perdir=a.perdir)
+    ConvDiffSurf!(a.f,a.u⁰,c.ρuf,a.σ,c.f⁰,c.fᶠ,c.fᵐ,c.α,c.n̂,c.λμ,c.λρ,a.ν,c.η,perdir=a.perdir)
     accelerate!(a.f,time(a),a.g,a.U)
-    BDIM!(a); BC!(a.u,U,a.exitBC,a.perdir)
+    BDIM!(a.Δt[end],a.f,a.u,c.ρu⁰,c.f,c.λρ); BC!(a.u,U,a.exitBC,a.perdir)
     calke && calke!(a.σ,a.u,c.f,c.f1,c.λρ,c.ke,c.keN)
     calculateL!(a,c); update!(b)
     project!(a,b); BC!(a.u,U,a.exitBC,a.perdir)
@@ -85,24 +90,24 @@ and the `AbstractPoisson` pressure solver to project the velocity onto an incomp
 
     # corrector u → u¹
     U = BCTuple(a.U,timeNext(a),D)
-    c.ρu .= 0
-    advect!(a,c,c.f⁰,a.u,a.u); measure!(a,d,c;t=0,ϵ=1)
-    BC!(c.ρu,U,a.exitBC,a.perdir); c.ρu ./= a.Δt[end]
-    smoothVOF!(smoothStep, c.f, c.fᶠ, c.α;perdir=c.perdir)
-    @. c.f = (c.f⁰+c.f)*0.5
-    ConvDiffSurf!(a.f,a.u,c.ρu,a.σ,c.f,c.fᶠ,c.fᵐ,c.α,c.n̂,c.λμ,c.λρ,a.ν,c.η,perdir=a.perdir)
+    c.ρuf .= 0
+    advect!(a,c,c.f⁰,a.u⁰,a.u); measure!(a,d,c;t=0,ϵ=1)
+    BC!(c.ρuf,U,a.exitBC,a.perdir); c.ρuf ./= a.Δt[end]
+    smoothVOF!(smoothStep, c.f⁰, c.fᶠ, c.α;perdir=c.perdir)
+    @. a.u = 0.5*(a.u+a.u⁰)
+    ConvDiffSurf!(a.f,a.u,c.ρuf,a.σ,c.f,c.fᶠ,c.fᵐ,c.α,c.n̂,c.λμ,c.λρ,a.ν,c.η,perdir=a.perdir)
     accelerate!(a.f,timeNext(a),a.g,a.U)
-    BDIM!(a); scale_u!(a,0.5); BC!(a.u,U,a.exitBC,a.perdir)
+    BDIM!(a.Δt[end],a.f,a.u,c.ρu,c.f⁰,c.λρ); BC!(a.u,U,a.exitBC,a.perdir)
     calke && calke!(a.σ,a.u,c.fᶠ,c.f1,c.λρ,c.ke,c.keN)
     calculateL!(a,c); update!(b)
-    project!(a,b,0.5); BC!(a.u,U,a.exitBC,a.perdir)
+    project!(a,b); BC!(a.u,U,a.exitBC,a.perdir)
     calke && calke!(a.σ,a.u,c.fᶠ,c.f1,c.λρ,c.ke,c.keN)
     c.f⁰ .= c.f
 
     push!(a.Δt,min(CFL(a,c),1.1a.Δt[end]))
 end
 
-function ConvDiffSurf!(r,u,ρu,Φ,f,fᶠ,fbuffer,α,n̂,λμ,λρ,ν,η;perdir=(0,))
+function ConvDiffSurf!(r,u,ρuf,Φ,f,fᶠ,fbuffer,α,n̂,λμ,λρ,ν,η;perdir=(0,))
     r .= 0.
     N,n = size_u(u)
     # for i ∈ 1:n, j ∈ 1:n
@@ -128,38 +133,43 @@ function ConvDiffSurf!(r,u,ρu,Φ,f,fᶠ,fbuffer,α,n̂,λμ,λρ,ν,η;perdir=(
         # if it is periodic direction
         tagper = (j in perdir)
         # treatment for bottom boundary with BCs
-        lowBoundaryConv!(r,u,ρu,Φ,ν,i,j,N,Val{tagper}())
+        lowBoundaryConv!(r,u,ρuf,Φ,ν,i,j,N,Val{tagper}())
         # inner cells
         @loop (
-            Φ[I] = ϕu(j,CI(I,i),u,ϕ(i,CI(I,j),ρu));
+            Φ[I] = ϕu(j,CI(I,i),u,ϕ(i,CI(I,j),ρuf));
             r[I,i] += Φ[I];
         ) over I ∈ inside_u(N,j)
         @loop r[I-δ(j,I),i] -= Φ[I] over I ∈ inside_u(N,j)
         # treatment for upper boundary with BCs
-        upperBoundaryConv!(r,u,ρu,Φ,ν,i,j,N,Val{tagper}())
+        upperBoundaryConv!(r,u,ρuf,Φ,ν,i,j,N,Val{tagper}())
     end
-    for i ∈ 1:n
-        @loop r[I,i] /= calculateρ(i,I,fᶠ,λρ) over I ∈ inside(Φ)
-    end
+    # for i ∈ 1:n
+    #     @loop r[I,i] /= calculateρ(i,I,fᶠ,λρ) over I ∈ inside(Φ)
+    # end
 end
 
 # Neumann BC Building block
 lowBoundaryDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N,::Val{false}) = @loop r[I,i] += -calculateμ(i,j,I,fᶠ,λμ,ν)*(∂(j,CI(I,i),u)+∂(i,CI(I,j),u)) over I ∈ slice(N,2,j,2)
-lowBoundaryConv!(r,u,ρu,Φ,ν,i,j,N,::Val{false}) = @loop r[I,i] += ϕuL(j,CI(I,i),u,ϕ(i,CI(I,j),ρu)) over I ∈ slice(N,2,j,2)
+lowBoundaryConv!(r,u,ρuf,Φ,ν,i,j,N,::Val{false}) = @loop r[I,i] += ϕuL(j,CI(I,i),u,ϕ(i,CI(I,j),ρuf)) over I ∈ slice(N,2,j,2)
 upperBoundaryDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N,::Val{false}) = @loop r[I-δ(j,I),i] += calculateμ(i,j,I,fᶠ,λμ,ν)*(∂(j,CI(I,i),u)+∂(i,CI(I,j),u)) over I ∈ slice(N,N[j],j,2)
-upperBoundaryConv!(r,u,ρu,Φ,ν,i,j,N,::Val{false}) = @loop r[I-δ(j,I),i] += -ϕuR(j,CI(I,i),u,ϕ(i,CI(I,j),ρu)) over I ∈ slice(N,N[j],j,2)
+upperBoundaryConv!(r,u,ρuf,Φ,ν,i,j,N,::Val{false}) = @loop r[I-δ(j,I),i] += -ϕuR(j,CI(I,i),u,ϕ(i,CI(I,j),ρuf)) over I ∈ slice(N,N[j],j,2)
 
 # Periodic BC Building block
 lowBoundaryDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N,::Val{true}) = @loop (
     Φ[I] = -calculateμ(i,j,I,fᶠ,λμ,ν)*(∂(j,CI(I,i),u)+∂(i,CI(I,j),u));
     r[I,i] += Φ[I]
 ) over I ∈ slice(N,2,j,2)
-lowBoundaryConv!(r,u,ρu,Φ,ν,i,j,N,::Val{true}) = @loop (
-    Φ[I] = ϕuP(j,CIj(j,CI(I,i),N[j]-2),CI(I,i),u,ϕ(i,CI(I,j),ρu));
+lowBoundaryConv!(r,u,ρuf,Φ,ν,i,j,N,::Val{true}) = @loop (
+    Φ[I] = ϕuP(j,CIj(j,CI(I,i),N[j]-2),CI(I,i),u,ϕ(i,CI(I,j),ρuf));
     r[I,i] += Φ[I]
 ) over I ∈ slice(N,2,j,2)
 upperBoundaryDiff!(r,u,Φ,fᶠ,λμ,ν,i,j,N,::Val{true}) = @loop r[I-δ(j,I),i] -= Φ[CIj(j,I,2)] over I ∈ slice(N,N[j],j,2)
-upperBoundaryConv!(r,u,ρu,Φ,ν,i,j,N,::Val{true}) = @loop r[I-δ(j,I),i] -= Φ[CIj(j,I,2)] over I ∈ slice(N,N[j],j,2)
+upperBoundaryConv!(r,u,ρuf,Φ,ν,i,j,N,::Val{true}) = @loop r[I-δ(j,I),i] -= Φ[CIj(j,I,2)] over I ∈ slice(N,N[j],j,2)
+
+function BDIM!(dt,forcing,u,ρu,f,λρ)
+    @loop ρu[Ii] += dt*forcing[Ii] over Ii in CartesianIndices(forcing)
+    ρu2u(u,ρu,f,λρ)
+end
 
 function measure!(a::Flow,body::NoBody,c::cVOF;t=0,ϵ=1) a.μ₀ .= 1 end
 function measure!(a::Flow,b::AbstractPoisson,c::cVOF,d::AbstractBody,t=0)
@@ -196,9 +206,14 @@ end
 #     0.2min(10.,tCFL,tFr,tRe,tCOF)
 # end
 
-function u2ρu!(u,f::AbstractArray{T,n},λρ) where {T,n}
+function u2ρu(u,ρu,f::AbstractArray{T,n},λρ) where {T,n}
     for i ∈ 1:n
-        @loop u[I,i] *= calculateρ(i,I,f,λρ) over I ∈ inside(f)
+        @loop ρu[I,i] = u[I,i]*calculateρ(i,I,f,λρ) over I ∈ inside(f)
+    end
+end
+function ρu2u(u,ρu,f::AbstractArray{T,n},λρ) where {T,n}
+    for i ∈ 1:n
+        @loop u[I,i] = ρu[I,i]/calculateρ(i,I,f,λρ) over I ∈ inside(f)
     end
 end
 
@@ -212,12 +227,12 @@ It calculates the volume fraction after one fluxing.
 Volume fraction field `f` is being fluxed with the averaged of two velocity -- `u¹` and `u²`.
 """
 advect!(a::Flow{D}, c::cVOF, f=c.f, u¹=a.u⁰, u²=a.u) where {D} = updateVOF!(
-    a.Δt[end], f, c.fᶠ, c.n̂, c.α, u¹, u², c.c̄,c.λρ,c.ρu; perdir=a.perdir,dirdir=c.dirdir
+    a.Δt[end], f, c.fᶠ, c.n̂, c.α, u¹, u², c.c̄,c.λρ,c.ρuf; perdir=a.perdir,dirdir=c.dirdir
 )
 function updateVOF!(
         δt, f::AbstractArray{T,D}, fᶠ::AbstractArray{T,D}, 
         n̂::AbstractArray{T,Dv}, α::AbstractArray{T,D}, 
-        u::AbstractArray{T,Dv}, u⁰::AbstractArray{T,Dv}, c̄,λρ,ρu; perdir=(0,),dirdir=(0,)
+        u::AbstractArray{T,Dv}, u⁰::AbstractArray{T,Dv}, c̄,λρ,ρuf; perdir=(0,),dirdir=(0,)
     ) where {T,D,Dv}
     tol = 10eps(eltype(f))
 
@@ -243,7 +258,7 @@ function updateVOF!(
         d = opOrder[iOp]
         uMulp = opCoeff[iOp]*δt
         reconstructInterface!(f,α,n̂,perdir=perdir,dirdir=dirdir)
-        getVOFFaceFlux!(d,f,α,n̂,u,u⁰,uMulp,fᶠ,λρ,ρu)
+        getVOFFaceFlux!(d,f,α,n̂,u,u⁰,uMulp,fᶠ,λρ,ρuf)
         @loop (
             f[I] += -∂(d,I+δ(d,I),fᶠ) + c̄[I]*(∂(d,I,u)+∂(d,I,u⁰))*0.5uMulp
         ) over I ∈ inside(f)
@@ -442,10 +457,10 @@ end
 - `uMulp`: the multiplier of the velocity, to take care of operator splitting coefficients and time step size
 - `fᶠ`: where the flux is stored
 """
-function getVOFFaceFlux!(d,f,α,n̂,u,u⁰,uMulp,fᶠ,λρ,ρu)
+function getVOFFaceFlux!(d,f,α,n̂,u,u⁰,uMulp,fᶠ,λρ,ρuf)
     fᶠ .= 0.0
     @loop fᶠ[IFace] = getVOFFaceFlux!(d,f,α,n̂,0.5*(u[IFace,d]+u⁰[IFace,d])*uMulp,IFace) over IFace ∈ inside_uWB(size(f),d)
-    @loop ρu[I,d] = VOFFaceFlux2MassFlux(d,I,u,u⁰,uMulp,fᶠ,λρ) over I∈inside_uWB(size(f),d)
+    @loop ρuf[I,d] = VOFFaceFlux2MassFlux(d,I,u,u⁰,uMulp,fᶠ,λρ) over I∈inside_uWB(size(f),d)
 end
 function getVOFFaceFlux!(d,fIn::AbstractArray{T,n},α::AbstractArray{T,n},n̂::AbstractArray{T,nv},dl,IFace::CartesianIndex) where {T,n,nv}
     ICell = IFace;
@@ -475,7 +490,7 @@ function VOFFaceFlux2MassFlux(d,I,u,u⁰,uMulp,fᶠ,λρ)
     uΔt = 0.5*(u[I,d]+u⁰[I,d])*uMulp
     fᵥᵥuΔt = fᶠ[I]
     fₐuΔt = uΔt - fᵥᵥuΔt
-    return fᵥᵥuΔt+fₐuΔt*λρ  # ρuΔt
+    return fᵥᵥuΔt+fₐuΔt*λρ  # ρufΔt
 end
 
 """
