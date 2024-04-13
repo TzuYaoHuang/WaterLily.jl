@@ -6,6 +6,7 @@ using Statistics: mean
 using StaticArrays
 using Interpolations
 using Random
+using CUDA
 
 
 """
@@ -40,8 +41,8 @@ struct cVOF{D, T, Sf<:AbstractArray{T}, Vf<:AbstractArray{T}}
         f = ones(T, Ng) |> arr
         fᶠ = copy(f)
         fᵐ = copy(f)
-        n̂ = zeros(T, Nd)
-        α = zeros(T, Ng)
+        n̂ = zeros(T, Nd) |> arr
+        α = zeros(T, Ng) |> arr
         c̄ = zeros(Int8, Ng) |> arr
         applyVOF!(f,α,n̂,InterfaceSDF)
         BCVOF!(f,α,n̂;perdir=perdir,dirdir=dirdir)
@@ -239,7 +240,7 @@ function updateVOF!(
         maxf, maxid = findmax(f)
         minf, minid = findmin(f)
         if maxf-1 > tol
-            du⁰,du = abs(div(maxid,u⁰)),abs(div(maxid,u))
+            CUDA.@allowscalar du⁰,du = abs(div(maxid,u⁰)),abs(div(maxid,u))
             @printf("|∇⋅u⁰| = %+13.8f, |∇⋅u| = %+13.8f\n",du⁰,du)
             errorMsg = "max VOF @ $(maxid.I) ∉ [0,1] @ iOp=$iOp which is direction $d, Δf = $(maxf-1)"
             (du⁰+du > 10) && error(errorMsg)
@@ -251,7 +252,7 @@ function updateVOF!(
             end
         end
         if minf < -tol
-            du⁰,du = abs(div(minid,u⁰)),abs(div(minid,u))
+            CUDA.@allowscalar du⁰,du = abs(div(minid,u⁰)),abs(div(minid,u))
             @printf("|∇⋅u⁰| = %+13.8f, |∇⋅u| = %+13.8f\n",du⁰,du)
             errorMsg = "min VOF @ $(minid.I) ∉ [0,1] @ iOp=$iOp which is direction $d, Δf = $(-minf)"
             (du⁰+du > 10) && error(errorMsg)
@@ -409,8 +410,11 @@ function getInterfaceNormal_CD!(f::AbstractArray{T,n},n̂,I) where {T,n}
 end
 function crossSummation(f::AbstractArray{T,n},I,d) where {T,n}
     a = f[I]
-    for iDir∈getAnotherDir(d,n)
-        a += f[I-δ(iDir,I)]+f[I+δ(iDir,I)]
+    # for iDir∈getAnotherDir(d,n)
+    #     a += f[I-δ(iDir,I)]+f[I+δ(iDir,I)]
+    # end
+    for iDir∈1:n
+        a += iDir≠d ? f[I-δ(iDir,I)]+f[I+δ(iDir,I)] : 0
     end
     return a
 end
@@ -537,10 +541,12 @@ function applyVOF!(f::AbstractArray{T,D},α::AbstractArray{T,D},n̂::AbstractArr
 end
 function applyVOF!(f::AbstractArray{T,D},α::AbstractArray{T,D},n̂::AbstractArray{T,Dv},FreeSurfsdf::Function,I::CartesianIndex{D}) where {T,D,Dv}
     α[I] = FreeSurfsdf(loc(0,I))  # the coordinate of the cell center
-    n̂[I,:] = ForwardDiff.gradient(FreeSurfsdf, loc(0,I))
+    n = ForwardDiff.gradient(FreeSurfsdf, loc(0,I))
+    for i∈1:D n̂[I,i] = n[i] end
     sumN = 0; sumN2= 0; for i∈1:D sumN += n̂[I,i]; sumN2+= n̂[I,i]^2 end
     α[I] = 0.5sumN-√sumN2*α[I]
-    f[I] = getVolumeFraction(n̂,I,α[I])
+    # f[I] = getVolumeFraction(n̂,I,α[I])
+    f[I] = getVolumeFraction(n,α[I])
     # f[I] = clamp((√D/2 - α[I])/(√D),0,1)  # convert distance to volume fraction assume `n̂ = (1,1,...)` 
 end
 
@@ -1086,7 +1092,7 @@ containInterface(f) = (f≠0) && (f≠1)
 validCI(I::CartesianIndex{D},f::AbstractArray{T,D}) where {T,D} = all(ntuple(i->1,D) .≤ I.I .≤ size(f))
 getXdir(i) = ifelse(abs(i)==1,-2sign(i),sign(i))
 getXYdir(i) = (sign(i)*((abs(i))%3+1),(abs(i)+1)%3+1)
-getAnotherDir(d,n) = filter(i-> i≠d,(1:n...,))
+getAnotherDir(d::Integer,n::Integer) = filter(i-> i≠d,(1:n...,))
 transformCoord(coord,perm) = sign.(perm).*coord[abs.(perm)]
 function majorDir(n̂,I::CartesianIndex{D}) where D
     i = myargmax(D,n̂,I)
