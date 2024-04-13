@@ -172,7 +172,7 @@ function solver_!(p::Poisson;log=false,tol=1e-4,itmx=1e3)
     log && return res
 end
 
-function solver!(p::Poisson;log=false,tol=1e-10,itmx=4e3)
+function solver!(p::Poisson;log=false,tol=1e-10,itmx=typemax(Int16))
     BC!(p.x;perdir=p.perdir)
     residual!(p); r₂ = L₂(p)
     push!(p.res0,r₂)
