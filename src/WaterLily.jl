@@ -137,7 +137,7 @@ function sim_step!(sim::TwoPhaseSimulation,t_end;verbose=false,remeasure=true,sm
         mom_step!(sim.flow,sim.pois,sim.inter,sim.body) # evolve Flow
         (length(sim.flow.Δt)%smoothStep==0) && smoothVelocity!(sim.flow,sim.pois,sim.inter,sim.body,oldPStorage;ω)
         t += sim.flow.Δt[end]
-        verbose && @printf("    tU/L=%6.3f, ΔtU/L=%.10f, poisN=%4d\n",t*sim.U/sim.L,sim.flow.Δt[end]*sim.U/sim.L,sim.pois.n[end]); flush(stdout)
+        verbose && @printf("    tU/L=%6.3f, ΔtU/L=%.10f, poisN=%4d, r2=%10.6e\n",t*sim.U/sim.L,sim.flow.Δt[end]*sim.U/sim.L,sim.pois.n[end],sim.pois.res[end]); flush(stdout)
     end
 end
 
