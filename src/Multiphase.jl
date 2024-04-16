@@ -241,27 +241,27 @@ function updateVOF!(
         minf, minid = findmin(f)
         if maxf-1 > tol
             CUDA.@allowscalar du⁰,du = abs(div(maxid,u⁰)),abs(div(maxid,u))
-            @printf("|∇⋅u⁰| = %+13.8f, |∇⋅u| = %+13.8f\n",du⁰,du)
+            @printf("    |∇⋅u⁰| = %+13.8f, |∇⋅u| = %+13.8f\n",du⁰,du)
             errorMsg = "max VOF @ $(maxid.I) ∉ [0,1] @ iOp=$iOp which is direction $d, Δf = $(maxf-1)"
-            (du⁰+du > 10) && error(errorMsg)
-            try
-                error(errorMsg)
-            catch e
-                Base.printstyled("ERROR: "; color=:red, bold=true)
-                Base.showerror(stdout, e, Base.catch_backtrace()); println()
-            end
+            # (du⁰+du > 10) && error(errorMsg)
+            # try
+            #     error(errorMsg)
+            # catch e
+            #     Base.printstyled("ERROR: "; color=:red, bold=true)
+            #     Base.showerror(stdout, e, Base.catch_backtrace()); println()
+            # end
         end
         if minf < -tol
             CUDA.@allowscalar du⁰,du = abs(div(minid,u⁰)),abs(div(minid,u))
-            @printf("|∇⋅u⁰| = %+13.8f, |∇⋅u| = %+13.8f\n",du⁰,du)
+            @printf("    |∇⋅u⁰| = %+13.8f, |∇⋅u| = %+13.8f\n",du⁰,du)
             errorMsg = "min VOF @ $(minid.I) ∉ [0,1] @ iOp=$iOp which is direction $d, Δf = $(-minf)"
-            (du⁰+du > 10) && error(errorMsg)
-            try
-                error(errorMsg)
-            catch e
-                Base.printstyled("ERROR: "; color=:red, bold=true)
-                Base.showerror(stdout, e, Base.catch_backtrace()); println()
-            end
+            # (du⁰+du > 10) && error(errorMsg)
+            # try
+            #     error(errorMsg)
+            # catch e
+            #     Base.printstyled("ERROR: "; color=:red, bold=true)
+            #     Base.showerror(stdout, e, Base.catch_backtrace()); println()
+            # end
         end
 
         # cleanup Wisp
@@ -543,11 +543,16 @@ function applyVOF!(f::AbstractArray{T,D},α::AbstractArray{T,D},n̂::AbstractArr
     α[I] = FreeSurfsdf(loc(0,I))  # the coordinate of the cell center
     n = ForwardDiff.gradient(FreeSurfsdf, loc(0,I))
     for i∈1:D n̂[I,i] = n[i] end
+    if any(isnan.(n))
+        for i∈1:D
+            xyzpδ = SVector{D,T}(loc(0,I).+0.01 .*δ(i,I).I)
+            xyzmδ = SVector{D,T}(loc(0,I).-0.01 .*δ(i,I).I)
+            n̂[I,i] = FreeSurfsdf(xyzpδ) - FreeSurfsdf(xyzmδ)
+        end
+    end
     sumN = 0; sumN2= 0; for i∈1:D sumN += n̂[I,i]; sumN2+= n̂[I,i]^2 end
     α[I] = 0.5sumN-√sumN2*α[I]
-    # f[I] = getVolumeFraction(n̂,I,α[I])
-    f[I] = getVolumeFraction(n,α[I])
-    # f[I] = clamp((√D/2 - α[I])/(√D),0,1)  # convert distance to volume fraction assume `n̂ = (1,1,...)` 
+    f[I] = getVolumeFraction(n̂,I,α[I])
 end
 
 """
@@ -777,8 +782,7 @@ function surfTen!(r,f::AbstractArray{T,D},fbuffer,α,n̂,η;perdir=(0,),dirdir=(
         @loop fbuffer[I] = ϕ(d,I,f) over I∈inside(f)
         BC!(fbuffer;perdir)
         @loop containInterface(fbuffer[I]) && getInterfaceNormal_WY!(fbuffer,n̂,N,I) over I ∈ inside(f)
-        @loop r[I,d] += containInterface(fbuffer[I]) ? η*getCurvature(I,fbuffer,majorDir(n̂,I))*-∂(d,I,f) : 0 over I∈inside(f) 
-        # @loop r[I,d] += containInterface(fbuffer[I]) ? η*-1/(0.8*64)*-∂(d,I,f) : 0 over I∈inside(f) 
+        @loop r[I,d] += containInterface(fbuffer[I]) ? η*getCurvature(I,fbuffer,majorDir(n̂,I))*-∂(d,I,f) : zero(T) over I∈inside(f) 
     end
 end
 
@@ -813,7 +817,7 @@ function getCurvature(I::CartesianIndex{3},f::AbstractArray{T,3},i) where {T}
     Hxy= (H[3,3] + H[1,1] - H[3,1] - H[1,3])/4
     return (Hxx*(1+Hy^2) + Hyy*(1+Hx^2) - 2Hxy*Hx*Hy)/(1+Hx^2+Hy^2)^1.5
 end
-function getCurvature(I::CartesianIndex{2},f::AbstractArray{T,2},i,returnH=false) where {T}
+function getCurvature(I::CartesianIndex{2},f::AbstractArray{T,2},i) where {T}
     ix = getXdir(i)
     H = @SArray [
         getPopinetHeight(I+xUnit*δd(ix,I),f,i)
@@ -821,7 +825,6 @@ function getCurvature(I::CartesianIndex{2},f::AbstractArray{T,2},i,returnH=false
     ]
     Hₓ = (H[3]-H[1])/2
     Hₓₓ= (H[3]+H[1]-2H[2])
-    returnH && return H
     return Hₓₓ/(1+Hₓ^2)^1.5
 end
 
@@ -848,14 +851,14 @@ Return the column height relative to cell `I` center along signed `i` direction,
 The function is based on the Algorithm 4 from [Popinet, JCP (2009)](https://doi.org/10.1016/j.jcp.2009.04.042).
 If `monotonic` is activated, the summation will only cover the monotonic range. The monotonic condition is based on [Guo et al., Appl. Math. Model. (2015)](https://doi.org/10.1016/j.apm.2015.04.022).
 """
-function getPopinetHeightAdaptive(I,f,i,monotonic=true)
+function getPopinetHeightAdaptive(I,f::AbstractArray{T,D},i,monotonic=true) where {T,D}
     consistent = true
     Inow = I; fnow = f[Inow]; H = (fnow-0.5)
     # Iterate till reach the cell full of air
     finishInd = fnow<1
     while !finishInd || containInterface(fnow)
         Inow += δd(i,I); !validCI(Inow,f) && break
-        fnow = ifelse(monotonic && f[Inow]>fnow, 0, f[Inow])
+        fnow = ifelse(monotonic && f[Inow]>fnow, zero(T), f[Inow]) # type stability is important in ifelse in GPU...
         H += fnow
         finishInd = ifelse(containInterface(fnow),true,finishInd)
     end
@@ -865,7 +868,7 @@ function getPopinetHeightAdaptive(I,f,i,monotonic=true)
     finishInd = fnow>0
     while !finishInd || containInterface(fnow)
         Inow -= δd(i,I); !validCI(Inow,f) && break
-        fnow = ifelse(monotonic && f[Inow]<fnow, 1, f[Inow])
+        fnow = ifelse(monotonic && f[Inow]<fnow, one(T), f[Inow])
         H += fnow-1  # a little trick that make `I` cell center the origin
         finishInd = ifelse(containInterface(fnow),true,finishInd)
     end
