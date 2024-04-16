@@ -89,7 +89,7 @@ without the corrections, no solution exists.
 """
 function residual!(p::Poisson) 
     @inside p.r[I] = ifelse(p.iD[I]==0,0,p.z[I]-mult(I,p.L,p.D,p.x))
-    s = sum(p.r)/length(p.r[inside(p.r)])
+    s = sum(p.r)/length(inside(p.r))
     abs(s) <= 2eps(eltype(s)) && return
     @inside p.r[I] = p.r[I]-s
 end
@@ -172,7 +172,7 @@ function solver_!(p::Poisson;log=false,tol=1e-4,itmx=1e3)
     log && return res
 end
 
-function solver!(p::Poisson;log=false,tol=1e-10,itmx=typemax(Int16))
+function solver!(p::Poisson{T};log=false,tol=sqrt(eps(T))/150,itmx=4000) where T
     BC!(p.x;perdir=p.perdir)
     residual!(p); r₂ = L₂(p)
     push!(p.res0,r₂)

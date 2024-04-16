@@ -87,7 +87,7 @@ end
 mult!(ml::MultiLevelPoisson,x) = mult!(ml.levels[1],x)
 residual!(ml::MultiLevelPoisson,x) = residual!(ml.levels[1],x)
 
-function solver!(ml::MultiLevelPoisson;log=false,tol=1e-10,itmx=128)
+function solver!(ml::MultiLevelPoisson;log=false,tol=1e-6,itmx=128)
     p = ml.levels[1]
     BC!(p.x;perdir=p.perdir)
     residual!(p); r₂ = L₂(p)
