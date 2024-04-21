@@ -36,10 +36,11 @@ Compute ``½α∥𝛚∥²`` at center of cell `I` where `ω` can be used
 to subtract a background flow (by default, `U=0`).
 This function take multiphase into account so as the staggered arragement.
 """
-EnsI(I::CartesianIndex{D},ω,f,water=true) where D = ifelse(water,f[I],1-f[I])*0.5*0.25fsum(D) do i
-    ix,iy = getAnotherDir(i,D)
-    ω[I,i]^2+ω[I+δ(ix,I),i]^2+ω[I+δ(iy,I),i]^2+ω[I+δ(ix,I)+δ(iy,I),i]^2
+EnsI(I::CartesianIndex{3},ω,f,water=true) = f*0.5*0.25fsum(3) do i
+    mapreduce(II -> ω[II]^2, +, I:I+oneunit(I)-δ(i,I))
 end
+
+EnsI(I::CartesianIndex{2},ω,f,water=true) = f*0.5*0.25*mapreduce(II -> ω[II]^2, +, I:I+oneunit(I))
 """
     ρuI(i,I::CartesianIndex,u,U=0)
 
