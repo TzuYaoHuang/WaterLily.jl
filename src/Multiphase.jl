@@ -835,11 +835,11 @@ end
 Calculate water height of a single column with methods considering the adaptive cell height and if not working, switch to the traditional 3x7 column configuration.
 """
 function getPopinetHeight(I,f,i)
-    H,consistent = getPopinetHeightAdaptive(I,f,i,false)
-    consistent && return H
+    # H,consistent = getPopinetHeightAdaptive(I,f,i,false)
+    # consistent && return H
     H,consistent = getPopinetHeightAdaptive(I,f,i,true)
-    consistent && return H
-    H = getPopinetHeightFixed3(I,f,i)
+    # consistent && return H
+    # H = getPopinetHeightFixed3(I,f,i)
     return H
 end
 
