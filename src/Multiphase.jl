@@ -289,6 +289,9 @@ function reconstructInterface!(f::AbstractArray{T,n},α::AbstractArray{T,n},n̂:
         for i∈1:n n̂[I,i] = 0 end
     else
         getInterfaceNormal_WY!(f,n̂,N,I;perdir,dirdir)
+        # getInterfaceNormal_MYC!(f,n̂,N,I)
+        # getInterfaceNormal_CD!(f,n̂,I)
+        # getInterfaceNormal_PCD!(f,n̂,I)
         α[I] = getIntercept(n̂,I, fc)
     end
 end
@@ -338,13 +341,15 @@ Mixed Youngs-Centered normal reconstructure scheme from [Aulisa et al. (2007)](h
 [Duz (2005) page 81](https://doi.org/10.4233/uuid:e204277d-c334-49a2-8b2a-8a05cf603086) and [Baraldi et al. (2014)](http://doi.org/10.1016/j.compfluid.2013.12.018).
 One can also be referred to the source code of [PARIS](http://www.ida.upmc.fr/~zaleski/paris/). It is in vofnonmodule.f90.
 """
-function getInterfaceNormal_MYC!(f::AbstractArray{T,n},nhat,N,I) where {T,n}
+function getInterfaceNormal_MYC!(f::AbstractArray{T,n},n̂,N,I) where {T,n}
+    nhat = @views n̂[I,:]
     getInterfaceNormal_Y!(f,nhat,I)
     CCNhat = zeros(T,n)
+    curNhat = zeros(T,n)
     curm0 = 0
     CCiz = 0
     for iz∈1:n
-        curNhat = getInterfaceNormal_CCi(f,nhat,I,iz)
+        curNhat .= getInterfaceNormal_CCi(f,nhat,I,iz)
         if abs(curNhat[iz])>curm0 CCNhat .= curNhat; CCiz = iz end
         curm0 = abs(curNhat[iz])
     end
@@ -408,15 +413,21 @@ function getInterfaceNormal_CD!(f::AbstractArray{T,n},n̂,I) where {T,n}
         n̂[I,d] = (crossSummation(f,I-δ(d,I),d)-crossSummation(f,I+δ(d,I),d))*0.5
     end
 end
-function crossSummation(f::AbstractArray{T,n},I,d) where {T,n}
+function crossSummation(f::AbstractArray{T,n},I,d,γ=1.0) where {T,n}
     a = f[I]
     # for iDir∈getAnotherDir(d,n)
     #     a += f[I-δ(iDir,I)]+f[I+δ(iDir,I)]
     # end
     for iDir∈1:n
-        a += iDir≠d ? f[I-δ(iDir,I)]+f[I+δ(iDir,I)] : 0
+        a += iDir≠d ? γ*(f[I-δ(iDir,I)]+f[I+δ(iDir,I)]) : 0
     end
     return a
+end
+
+function getInterfaceNormal_PCD!(f::AbstractArray{T,n},n̂,I) where {T,n}
+    for d ∈ 1:n
+        n̂[I,d] = (f[I-δ(d,I)]-f[I+δ(d,I)])*0.5
+    end
 end
 
 
