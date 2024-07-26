@@ -288,10 +288,12 @@ function reconstructInterface!(f::AbstractArray{T,n},α::AbstractArray{T,n},n̂:
     if (fc==0.0 || fc==1.0)
         for i∈1:n n̂[I,i] = 0 end
     else
-        getInterfaceNormal_WY!(f,n̂,N,I;perdir,dirdir)
-        # getInterfaceNormal_MYC!(f,n̂,N,I)
+        # getInterfaceNormal_WY!(f,n̂,N,I;perdir,dirdir)
+        getInterfaceNormal_MYC!(f,n̂,N,I)
         # getInterfaceNormal_CD!(f,n̂,I)
         # getInterfaceNormal_PCD!(f,n̂,I)
+        # getInterfaceNormal_SLIC!(f,n̂,I)
+        # getInterfaceNormal_XYLIC!(f,n̂,I,2)
         α[I] = getIntercept(n̂,I, fc)
     end
 end
@@ -427,6 +429,22 @@ end
 function getInterfaceNormal_PCD!(f::AbstractArray{T,n},n̂,I) where {T,n}
     for d ∈ 1:n
         n̂[I,d] = (f[I-δ(d,I)]-f[I+δ(d,I)])*0.5
+    end
+end
+
+function getInterfaceNormal_SLIC!(f::AbstractArray{T,n},n̂,I) where {T,n}
+    getInterfaceNormal_CD!(f,n̂,I)
+    maxdir = myargmax(n,n̂,I)
+    nSign = sign(n̂[I,maxdir])
+    for iDir∈1:n
+        n̂[I,iDir] = 0
+    end
+    n̂[I,maxdir] = nSign
+end
+
+function getInterfaceNormal_XYLIC!(f::AbstractArray{T,n},n̂,I,d=2) where {T,n}
+    for i∈1:n
+        n̂[I,i] = ifelse(i==d,1,0)
     end
 end
 
