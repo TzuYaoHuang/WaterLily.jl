@@ -316,16 +316,8 @@ function getInterfaceNormal_WY!(f::AbstractArray{T,n},n̂,N,I;perdir=(0,),dirdir
             hc = get3CellHeight(I       , f, dc)
             hd = get3CellHeight(I-δ(d,I), f, dc)
             n̂[I,d] = -(hu-hd)*0.5
-            if d ∉ dirdir && d ∉ perdir
-                if I[d] == N[d]-1
-                    n̂[I,d] = -(hc - hd)
-                elseif I[d] == 2
-                    n̂[I,d] = -(hu - hc)
-                end
-            # elseif (hu+hd==0.0 || hu+hd==6.0)
-            #     nhat .= 0.0
-            elseif abs(n̂[I,d]) > 0.5
-                if (n̂[I,d]*(f[I]-0.5) >= 0.0)
+            if abs(n̂[I,d]) > 0.5
+                if (n̂[I,d]*(hc-1.5) >= 0.0)
                     n̂[I,d] = -(hu - hc)
                 else
                     n̂[I,d] = -(hc - hd)
