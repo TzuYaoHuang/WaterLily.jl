@@ -26,7 +26,7 @@ end
 
 function prerunsim(N)
     sim = TGV3D(N;T=Float32)
-    for i ∈ 1:200
+    for i ∈ 1:100
         mom_step!(sim.flow,sim.pois)
         print("$(i) ")
     end
@@ -34,7 +34,7 @@ function prerunsim(N)
 end
 
 function runsim!(sim)
-    for i ∈ 1:100
+    for i ∈ 1:2000
         mom_step!(sim.flow,sim.pois)
     end
 end
@@ -51,6 +51,4 @@ sim = prerunsim(256)
 Profile.init(n = 10^9, delay = 0.00001)
 
 # @profview main()
-runsim!(sim)
-@timev runsim!(sim)
-@profview runsim!(sim)
+@profview @timev runsim!(sim)
