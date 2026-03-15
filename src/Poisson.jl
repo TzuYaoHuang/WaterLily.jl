@@ -162,6 +162,7 @@ function pcg!(p::Poisson{T};it=6) where T
     end
 end
 smooth!(p) = GaussSeidelRB!(p; it=16)
+# smooth!(p) = pcg!(p)
 
 L₂(p::Poisson) = p.r ⋅ p.r # special method since outside(p.r)≡0
 L∞(p::Poisson) = maximum(abs,p.r)
