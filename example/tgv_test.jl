@@ -1,6 +1,7 @@
 using WaterLily
 using Profile
 using CUDA
+using NVTX
 
 println(pathof(WaterLily))
 
@@ -34,8 +35,14 @@ function prerunsim(N)
 end
 
 function runsim!(sim)
-    for i ∈ 1:2000
+    for i ∈ 1:50
         mom_step!(sim.flow,sim.pois)
+    end
+end
+
+function runsimNVTX!(sim)
+    for i ∈ 1:50
+        NVTX.@range "mom_step" mom_step!(sim.flow,sim.pois)
     end
 end
 
@@ -48,7 +55,8 @@ sim = prerunsim(256)
 
 # @timev runsim!(sim)
 
-Profile.init(n = 10^9, delay = 0.00001)
+Profile.init(n = 10^9, delay = 0.001)
 
 # @profview main()
-@profview @timev runsim!(sim)
+# @profview @timev runsim!(sim)
+CUDA.@profile external=true runsimNVTX!(sim)
