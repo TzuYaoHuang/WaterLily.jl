@@ -28,14 +28,14 @@ function circle_ke(x::T;kwargs...) where T
 end
 
 using Plots,TypedTables 
-data = map(range(63,66,400)) do x
+data = map(range(64,66,200)) do x
     (x=x,double=circle_ke(Float64(x)),single=circle_ke(Float32(x)))
 end |> Table
-data2 = map(range(63,66,400)) do x
+data2 = map(range(64,66,200)) do x
     (x=x,double=circle_ke(Float64(x),ϵ=2),single=circle_ke(Float32(x),ϵ=2))
 end |> Table
 
-plot(size=(1200,800))
+plot(size=(900,700))
 plot!(data.x,data.double,label="Float64, ϵ=1",c=:darkblue)
 plot!(data.x,data.single,label="Float32, ϵ=1",ls=:dash,c=:royalblue)
 plot!(data2.x,data2.double,label="Float64, ϵ=2",c=:darkred)
