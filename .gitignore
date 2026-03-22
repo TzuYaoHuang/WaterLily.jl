@@ -31,3 +31,5 @@ LocalPreferences.toml
 !/examples/julia2024.gif
 !/examples/hover.gif
 !/examples/oscillating.gif
+
+*nsys-rep
