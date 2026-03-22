@@ -1,7 +1,7 @@
 module WaterLilyCUDAExt
 
 using CUDA, WaterLily
-import WaterLily: L₂
+import WaterLily: L₂, backend_sync!
 
 """
     __init__()
@@ -9,6 +9,8 @@ import WaterLily: L₂
 Asserts CUDA is functional when loading this extension.
 """
 __init__() = @assert CUDA.functional()
+
+backend_sync!(::CuArray) = CUDA.synchronize()
 
 """
     L₂(a)

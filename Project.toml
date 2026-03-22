@@ -1,7 +1,7 @@
 name = "WaterLily"
 uuid = "ed894a53-35f9-47f1-b17f-85db9237eebd"
-authors = ["Gabriel Weymouth <gabriel.weymouth@gmail.com>"]
 version = "1.5.2"
+authors = ["Gabriel Weymouth <gabriel.weymouth@gmail.com>"]
 
 [deps]
 ConstructionBase = "187b0558-2788-49d3-abe0-74a17ed4e7c9"
@@ -11,6 +11,7 @@ ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 LoggingExtras = "e6f89c97-d47a-5376-807f-9c37f3926c36"
+NVTX = "5da4648a-3479-48b8-97b9-01cb529c0a1f"
 Preferences = "21216c6a-2e73-6563-6e65-726566657250"
 Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
@@ -31,8 +32,8 @@ WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"
 [extensions]
 WaterLilyAMDGPUExt = "AMDGPU"
 WaterLilyCUDAExt = "CUDA"
-WaterLilyMakieExt = "Makie"
 WaterLilyJLD2Ext = "JLD2"
+WaterLilyMakieExt = "Makie"
 WaterLilyMeshingExt = ["Makie", "Meshing"]
 WaterLilyPlotsExt = "Plots"
 WaterLilyReadVTKExt = "ReadVTK"
@@ -45,6 +46,7 @@ EllipsisNotation = "1.8"
 ForwardDiff = "0.10.18, 1"
 KernelAbstractions = "0.9.1"
 LoggingExtras = "1.1"
+NVTX = "1.0.3"
 Preferences = "1.4"
 Reexport = "^1.2.2"
 Requires = "1.3"

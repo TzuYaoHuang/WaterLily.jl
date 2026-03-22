@@ -1,7 +1,7 @@
 module WaterLilyAMDGPUExt
 
 using AMDGPU, WaterLily
-import WaterLily: L₂
+import WaterLily: L₂, backend_sync!
 
 """
     __init__()
@@ -9,6 +9,8 @@ import WaterLily: L₂
 Asserts AMDGPU is functional when loading this extension.
 """
 __init__() = @assert AMDGPU.functional()
+
+backend_sync!(::ROCArray) = AMDGPU.synchronize()
 
 """
     L₂(a)

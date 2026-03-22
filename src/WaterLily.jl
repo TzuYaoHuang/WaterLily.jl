@@ -3,7 +3,7 @@ $(README)
 """
 module WaterLily
 
-using DocStringExtensions
+using DocStringExtensions, NVTX
 
 include("util.jl")
 export L₂,BC!,@inside,inside,δ,apply!,loc,@log,set_backend,backend
@@ -171,6 +171,8 @@ function get_body end
 function plot_body_obs! end
 # export
 export viz!, get_body, plot_body_obs!
+
+backend_sync!(::Any) = nothing
 
 # Check number of threads when loading WaterLily
 """
