@@ -30,8 +30,14 @@ function restrictL!(a::AbstractArray{T},b;perdir=()) where T
     end
     BC!(a,zeros(SVector{n,T}),false,perdir)  # correct μ₀ @ boundaries
 end
-restrict!(a,b) = @inside a[I] = restrict(I,b)
-prolongate!(a,b) = @inside a[I] = b[down(I)]
+NVTX.@annotate function restrict!(a,b) 
+    @inside a[I] = restrict(I,b)
+    backend_sync!(a)
+end
+NVTX.@annotate function prolongate!(a,b)
+    @inside a[I] = b[down(I)]
+    backend_sync!(a)
+end
 
 @inline divisible(N) = mod(N,2)==0 && N>4
 @inline divisible(l::Poisson) = all(size(l.x) .|> divisible)
@@ -67,12 +73,15 @@ function update!(ml::MultiLevelPoisson)
     end
 end
 
-function Vcycle!(ml::MultiLevelPoisson;l=1)
+NVTX.@annotate function Vcycle!(ml::MultiLevelPoisson;l=1)
     fine,coarse = ml.levels[l],ml.levels[l+1]
     # set up coarse level
     Jacobi!(fine)
     restrict!(coarse.r,fine.r)
-    fill!(coarse.x,0.)
+    NVTX.@range "fill!(coarse.x,0.)" begin 
+        fill!(coarse.x,0.) 
+        backend_sync!(fine.x)
+    end
     # solve coarse (with recursion if possible)
     l+1<length(ml.levels) && Vcycle!(ml,l=l+1)
     smooth!(coarse)
@@ -84,13 +93,17 @@ end
 mult!(ml::MultiLevelPoisson,x) = mult!(ml.levels[1],x)
 residual!(ml::MultiLevelPoisson,x) = residual!(ml.levels[1],x)
 
-function solver!(ml::MultiLevelPoisson;tol=1e-4,itmx=32)
+NVTX.@annotate function solver!(ml::MultiLevelPoisson;tol=1e-4,itmx=32)
     p = ml.levels[1]
-    residual!(p); r₂ = L₂(p)
+    backend_sync!(p.x)
+    residual!(p); 
+    NVTX.@range "L₂" begin r₂ = L₂(p) end
     nᵖ=0; @log ", $nᵖ, $(L∞(p)), $r₂\n"
     while nᵖ<itmx
         Vcycle!(ml)
-        smooth!(p); r₂ = L₂(p); nᵖ+=1
+        smooth!(p); 
+        NVTX.@range "L₂" begin r₂ = L₂(p) end
+        nᵖ+=1
         @log ", $nᵖ, $(L∞(p)), $r₂\n"
         r₂<tol && break
     end

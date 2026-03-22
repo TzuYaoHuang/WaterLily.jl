@@ -89,18 +89,20 @@ minimizing the local effect. Other approaches are possible.
 Note: These corrections mean `x` is not strictly solving `Ax=z`, but
 without the corrections, no solution exists.
 """
-function residual!(p::Poisson)
+NVTX.@annotate function residual!(p::Poisson)
     perBC!(p.x,p.perdir)
     @inside p.r[I] = ifelse(p.iD[I]==0,0,p.z[I]-mult(I,p.L,p.D,p.x))
     s = sum(p.r)/length(inside(p.r))
     abs(s) <= 2eps(eltype(s)) && return
     @inside p.r[I] = p.r[I]-s
+    backend_sync!(p.x)
 end
 
-function increment!(p::Poisson)
+NVTX.@annotate function increment!(p::Poisson)
     perBC!(p.ϵ,p.perdir)
     @loop (p.r[I] = p.r[I]-mult(I,p.L,p.D,p.ϵ);
            p.x[I] = p.x[I]+p.ϵ[I]) over I ∈ inside(p.x)
+    backend_sync!(p.x)
 end
 """
     Jacobi!(p::Poisson; it=1)
@@ -108,8 +110,11 @@ end
 Jacobi smoother run `it` times.
 Note: This runs for general backends, but is _very_ slow to converge.
 """
-@fastmath Jacobi!(p;it=1) = for _ ∈ 1:it
-    @inside p.ϵ[I] = p.r[I]*p.iD[I]
+@fastmath NVTX.@annotate  Jacobi!(p;it=1) = for _ ∈ 1:it
+    NVTX.@range "ϵ=r[I]*iD" begin 
+        @inside p.ϵ[I] = p.r[I]*p.iD[I]  # initialize ϵ
+        backend_sync!(p.x)
+    end
     increment!(p)
 end
 
@@ -131,14 +136,20 @@ end
     Nin = size(x) .- 2
     return CartesianIndices(ntuple((i) -> ifelse(i==N,1:Nin[i]÷2,1:Nin[i]), N))
 end
-function GaussSeidelRB!(p; it=6)
-    @inside p.ϵ[I] = p.r[I]*p.iD[I]  # initialize ϵ
+NVTX.@annotate function GaussSeidelRB!(p; it=6)
+    NVTX.@range "ϵ=r[I]*iD" begin 
+        @inside p.ϵ[I] = p.r[I]*p.iD[I]  # initialize ϵ
+        backend_sync!(p.x)
+    end
 
     half_range = half_rangez(p.ϵ)  # set up cell range to be calculated.
     for _ in 1:it
         perBC!(p.ϵ,p.perdir)
-        @loop gauss_rb(p.ϵ,p.r,p.L,p.D,p.iD,0,I) over I ∈ half_range  # red
-        @loop gauss_rb(p.ϵ,p.r,p.L,p.D,p.iD,1,I) over I ∈ half_range  # black
+        NVTX.@range "GaussRBKernel" begin 
+            @loop gauss_rb(p.ϵ,p.r,p.L,p.D,p.iD,0,I) over I ∈ half_range  # red
+            @loop gauss_rb(p.ϵ,p.r,p.L,p.D,p.iD,1,I) over I ∈ half_range  # black
+            backend_sync!(p.x)
+        end
     end
     increment!(p) # increment solution and residual
 end
@@ -151,25 +162,53 @@ Conjugate-Gradient smoother with Jacobi preditioning. Runs at most `it` iteratio
 but will exit early if the Gram-Schmidt update parameter `|α| < 1%` or `|r D⁻¹ r| < 1e-8`.
 Note: This runs for general backends and is the default smoother.
 """
-function pcg!(p::Poisson{T};it=6) where T
+NVTX.@annotate function pcg!(p::Poisson{T};it=6) where T
     x,r,ϵ,z = p.x,p.r,p.ϵ,p.z
-    @inside z[I] = ϵ[I] = r[I]*p.iD[I]
-    rho = r⋅z
+    NVTX.@range "z=ϵ=r[I]*iD" begin 
+        @inside z[I] = ϵ[I] = r[I]*p.iD[I]  # initialize ϵ
+        backend_sync!(x)
+    end
+    NVTX.@range "rho = r⋅z" begin 
+        rho = r⋅z
+        backend_sync!(x)
+    end
     abs(rho)<10eps(T) && return
     for i in 1:it
         perBC!(ϵ,p.perdir)
-        @inside z[I] = mult(I,p.L,p.D,ϵ)
-        alpha = rho/(z⋅ϵ)
+        NVTX.@range "z[I] = mult(I,p.L,p.D,ϵ)" begin
+            @inside z[I] = mult(I,p.L,p.D,ϵ)
+            backend_sync!(x)
+        end
+        NVTX.@range "alpha = rho/(z⋅ϵ)" begin
+            alpha = rho/(z⋅ϵ)
+            backend_sync!(x)
+        end
         (abs(alpha)<1e-2 || abs(alpha)>1e2) && return # alpha should be O(1)
-        @loop (x[I] += alpha*ϵ[I];
-               r[I] -= alpha*z[I]) over I ∈ inside(x)
+        NVTX.@range "x += alpha*ϵ; r -= alpha*z" begin
+            @loop ( x[I] += alpha*ϵ[I];
+                    r[I] -= alpha*z[I]) over I ∈ inside(x)
+            backend_sync!(x)
+        end
         i==it && return
-        @inside z[I] = r[I]*p.iD[I]
-        rho2 = r⋅z
+        NVTX.@range "z=r[I]*iD" begin
+            @inside z[I] = r[I]*p.iD[I]
+            backend_sync!(x)
+        end
+        NVTX.@range "rho2 = r⋅z" begin
+            rho2 = r⋅z
+            backend_sync!(x)
+        end
         abs(rho2)<10eps(T) && return
-        beta = rho2/rho
-        @inside ϵ[I] = beta*ϵ[I]+z[I]
-        rho = rho2
+        NVTX.@range "beta = rho2/rho" begin
+            beta = rho2/rho
+        end
+        NVTX.@range "ϵ[I] = beta*ϵ[I]+z[I]" begin
+            @inside ϵ[I] = beta*ϵ[I]+z[I]
+            backend_sync!(x)
+        end
+        NVTX.@range "rho = rho2" begin
+            rho = rho2
+        end
     end
 end
 smooth!(p) = GaussSeidelRB!(p)
