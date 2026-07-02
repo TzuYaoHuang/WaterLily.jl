@@ -191,6 +191,8 @@ export flood,addbody,body_plot!,sim_gif!,plot_logger
 function viz! end
 function get_body end
 function plot_body_obs! end
+# hook set by WaterLilyPathlinesExt.__init__ when Pathlines is loaded
+const _pathlines_viz_hook = Ref{Union{Nothing,Function}}(nothing)
 # export
 export viz!, get_body, plot_body_obs!
 

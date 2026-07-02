@@ -154,10 +154,17 @@ function viz!(sim; f=nothing, duration=nothing, step=0.1, remeasure=true, verbos
     video=nothing, img=nothing, hidedecorations=false, elevation=π/8, azimuth=1.275π, framerate=60, compression=5,
     theme=nothing, fig_size=nothing, fig_pad=10, fig=nothing, ax=nothing, kwargs...)
 
+    pathlines = !isnothing(WaterLily._pathlines_viz_hook[])
+    update_render_fn = nothing  # populated below when pathlines=true
+
     function update_data()
-        f(dat, sim)
-        mirror_sym!(σ_buf, WaterLily.squeeze(@view dat[CIs]), sym)
-        σ[] = σ_buf
+        if pathlines
+            update_render_fn(sim)
+        else
+            f(dat, sim)
+            mirror_sym!(σ_buf, WaterLily.squeeze(@view dat[CIs]), sym)
+            σ[] = σ_buf
+        end
         if body && remeasure
             update_body!(dat, sim)
             mirror_sym!(σb_buf, WaterLily.squeeze(@view dat[CIs]), sym)
@@ -170,66 +177,74 @@ function viz!(sim; f=nothing, duration=nothing, step=0.1, remeasure=true, verbos
         update_data()
     end
 
-    d==2 && (@assert !(body2mesh) "body2mesh only allowed for 3D plots (d=3).")
+    d==2 && !pathlines && (@assert !(body2mesh) "body2mesh only allowed for 3D plots (d=3).")
     body2mesh && (@assert !isnothing(Base.get_extension(WaterLily, :WaterLilyMeshingExt)) "If body2mesh=true, Meshing must be loaded.")
     img_name, img_backend, img_fmt = parse_img(img) # validate and unpack the image spec; img_fmt set => save one image per frame
     D = ndims(sim.flow.σ)
-    @assert d <= D "Cannot do a 3D plot on a 2D simulation."
+    !pathlines && @assert d <= D "Cannot do a 3D plot on a 2D simulation."
     !isnothing(sym) && @assert length(sym) == d "sym kwarg must have length equal to plot dimension d=$d, got $(length(sym))."
     !isnothing(udf) && !isnothing(udf_kwargs) && (@assert all(isa(kw, Pair{Symbol}) for kw in udf_kwargs) "udf_kwargs needs to contain Pair{Symbol,Any} elements, eg. Dict{Symbol,Any}.")
     isnothing(udf) && (udf_kwargs=[])
-    isnothing(f) && (f = ω_viz!(d))
+    isnothing(f) && !pathlines && (f = ω_viz!(d))
 
     isnothing(CIs) && (CIs = CartesianIndices(Tuple(1:n for n in size(inside(sim.flow.σ)))))
     dat = sim.flow.σ[inside(sim.flow.σ)] |> ad_f(sim) |> Array
-    if d != D && all(>(1), length.(CIs.indices)) # Requesting 2D plot on 3D data, and CIs is not a slice
-        isnothing(cut) && (cut = (0, 0, size(dat,3)÷2))
-        @assert count(==(0), cut) == 2 "Requesting 2D plot on 3D data, but `cut` is not an slice, eg: (0,0,10)"
-        cut_dim = findfirst(!=(0), cut)
-        CIs = Tuple(i == cut_dim ? (cut[i]:cut[i]) : CIs.indices[i] for i in 1:D) |> CartesianIndices
-    end
-    limits = Tuple((1,n) for n in size(CIs) if n > 1)
-    !isnothing(sym) && (limits = Tuple(sym[i] != 0 ? (1, 2*lim[2]) : lim for (i, lim) in enumerate(limits)))
-    if isnothing(fig_size)
-        fig_size = (1200, 1200)
-        d == 2 && (fig_size = (fig_size[1], fig_size[2] * (limits[2][2] / limits[1][2])))
+    if !pathlines
+        if d != D && all(>(1), length.(CIs.indices)) # Requesting 2D plot on 3D data, and CIs is not a slice
+            isnothing(cut) && (cut = (0, 0, size(dat,3)÷2))
+            @assert count(==(0), cut) == 2 "Requesting 2D plot on 3D data, but `cut` is not an slice, eg: (0,0,10)"
+            cut_dim = findfirst(!=(0), cut)
+            CIs = Tuple(i == cut_dim ? (cut[i]:cut[i]) : CIs.indices[i] for i in 1:D) |> CartesianIndices
+        end
+        limits = Tuple((1,n) for n in size(CIs) if n > 1)
+        !isnothing(sym) && (limits = Tuple(sym[i] != 0 ? (1, 2*lim[2]) : lim for (i, lim) in enumerate(limits)))
+        if isnothing(fig_size)
+            fig_size = (1200, 1200)
+            d == 2 && (fig_size = (fig_size[1], fig_size[2] * (limits[2][2] / limits[1][2])))
+        end
     end
 
-    f(dat, sim)
-    slice0 = WaterLily.squeeze(@view dat[CIs]) |> ad_f(sim)
-    σ_buf = similar(dat, mirror_size(slice0, sym))
-    mirror_sym!(σ_buf, slice0, sym)
-    σ = Observable(σ_buf)
+    if pathlines
+        fig, ax, update_render_fn = WaterLily._pathlines_viz_hook[](sim; kwargs...)
+        new_fig = true
+    else
+        f(dat, sim)
+        slice0 = WaterLily.squeeze(@view dat[CIs]) |> ad_f(sim)
+        σ_buf = similar(dat, mirror_size(slice0, sym))
+        mirror_sym!(σ_buf, slice0, sym)
+        σ = Observable(σ_buf)
+
+        !isnothing(theme) && set_theme!(theme)
+        new_fig = isnothing(fig)
+        new_fig && (fig = Figure(size=fig_size, figure_padding=fig_pad))
+        isnothing(ax) && (ax = d==2 ? Axis(fig[1, 1]; aspect=DataAspect(), limits) : Axis3(fig[1, 1]; aspect=:data, limits, azimuth, elevation))
+        if d == 2 && tidy_colormap
+            clims = :clims in keys(kwargs) ? kwargs[:clims] : (-1,1)
+            nlevels = :levels in keys(kwargs) && kwargs[:levels] isa Int ? kwargs[:levels] : 10
+            colormap = :colormap in keys(kwargs) ? kwargs[:colormap] : :seismic
+            threshhold = :threshhold in keys(kwargs) ? kwargs[:threshhold] : 0.01
+            threshhold_color = :threshhold_color in keys(kwargs) ? kwargs[:threshhold_color] : RGB(1,1,1)
+            tidy_colormap, tidy_levels = default_colormap_and_levels(clims; threshhold, nlevels, colormap, threshhold_color)
+            kwargs = remove_kwargs(:levels, :colormap, :clims, :threshhold, :threshhold_color, :extendlow, :extendhigh; kwargs...)
+            kwargs = add_kwarg(:colormap=>tidy_colormap, :levels=>tidy_levels, :extendlow=>:auto, :extendhigh=>:auto; kwargs...)
+        end
+        if d == 3
+            algorithm = :algorithm in keys(kwargs) ? kwargs[:algorithm] : :mip
+            algorithm != :iso && !(:enable_depth in keys(kwargs)) && (kwargs = add_kwarg(:enable_depth=>false; kwargs...))
+        end
+        plot_σ_obs!(ax, σ; kwargs...)
+        hidedecorations && d==3 && (hidedecorations!(ax); ax.xspinesvisible = false; ax.yspinesvisible = false; ax.zspinesvisible = false)
+        hidedecorations && d==2 && (hidedecorations!(ax); ax.spinewidth=0)
+    end
+
     if body
         update_body!(dat, sim)
         bslice0 = WaterLily.squeeze(@view dat[CIs]) |> ad_f(sim)
         σb_buf = similar(dat, mirror_size(bslice0, sym))
         mirror_sym!(σb_buf, bslice0, sym)
         σb_obs = Observable(get_body(σb_buf, Val{body2mesh}()))
+        plot_body_obs!(ax, σb_obs; color=body_color)
     end
-
-    !isnothing(theme) && set_theme!(theme)
-    new_fig = isnothing(fig)
-    new_fig && (fig = Figure(size=fig_size, figure_padding=fig_pad))
-    isnothing(ax) && (ax = d==2 ? Axis(fig[1, 1]; aspect=DataAspect(), limits) : Axis3(fig[1, 1]; aspect=:data, limits, azimuth, elevation))
-    if d == 2 && tidy_colormap
-        clims = :clims in keys(kwargs) ? kwargs[:clims] : (-1,1)
-        nlevels = :levels in keys(kwargs) && kwargs[:levels] isa Int ? kwargs[:levels] : 10
-        colormap = :colormap in keys(kwargs) ? kwargs[:colormap] : :seismic
-        threshhold = :threshhold in keys(kwargs) ? kwargs[:threshhold] : 0.01
-        threshhold_color = :threshhold_color in keys(kwargs) ? kwargs[:threshhold_color] : RGB(1,1,1)
-        tidy_colormap, tidy_levels = default_colormap_and_levels(clims; threshhold, nlevels, colormap, threshhold_color)
-        kwargs = remove_kwargs(:levels, :colormap, :clims, :threshhold, :threshhold_color, :extendlow, :extendhigh; kwargs...)
-        kwargs = add_kwarg(:colormap=>tidy_colormap, :levels=>tidy_levels, :extendlow=>:auto, :extendhigh=>:auto; kwargs...)
-    end
-    if d == 3
-        algorithm = :algorithm in keys(kwargs) ? kwargs[:algorithm] : :mip
-        algorithm != :iso && !(:enable_depth in keys(kwargs)) && (kwargs = add_kwarg(:enable_depth=>false; kwargs...))
-    end
-    plot_σ_obs!(ax, σ; kwargs...)
-    body && plot_body_obs!(ax, σb_obs; color=body_color)
-    hidedecorations && d==3 && (hidedecorations!(ax); ax.xspinesvisible = false; ax.yspinesvisible = false; ax.zspinesvisible = false)
-    hidedecorations && d==2 && (hidedecorations!(ax); ax.spinewidth=0)
 
     if !isnothing(duration) # time loop for animation
         t₀ = round(WaterLily.sim_time(sim))
