@@ -40,7 +40,7 @@ function load!(flow::AbstractFlow; kwargs...)
     dir = get(Dict(kwargs), :dir, "./")
     obj = jldopen(joinpath(dir, fname))
     @assert size(flow.p) == size(obj["p"]) "Simulation size does not match the size of the JLD2-stored simulation."
-    copyto!(flow.p, obj["p"])  # host→device copy in place: no transient device array (cf. `.= x |> CuArray`)
+    copyto!(flow.p, obj["p"])
     copyto!(flow.u, obj["u"])
     empty!(flow.Δt)
     push!(flow.Δt, obj["Δt"]...)
@@ -60,7 +60,7 @@ function load!(meanflow::MeanFlow; kwargs...)
     dir = get(Dict(kwargs), :dir, "./")
     obj = jldopen(joinpath(dir, fname))
     @assert size(meanflow.P) == size(obj["P"]) "Simulation size does not match the size of the JLD2-stored simulation."
-    copyto!(meanflow.P, obj["P"])  # host→device copy in place: no transient device array
+    copyto!(meanflow.P, obj["P"])
     copyto!(meanflow.U, obj["U"])
     isnothing(meanflow.UU) || copyto!(meanflow.UU, obj["UU"])
     empty!(meanflow.t)
