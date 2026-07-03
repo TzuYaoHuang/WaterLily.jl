@@ -175,8 +175,7 @@ function viz!(sim; f=nothing, duration=nothing, step=0.1, remeasure=true, verbos
     function step_sim_and_viz!(sim, tᵢ)
         if pathlines; while sim_time(sim) < tᵢ
             sim_step!(sim; remeasure, udf, udf_kwargs...)
-            a = @allocated update_render_fn(sim)
-            println("pathlines update = $a allocations")
+            update_render_fn(sim)
         end; else
             sim_step!(sim, tᵢ; remeasure, udf, udf_kwargs...)
         end
