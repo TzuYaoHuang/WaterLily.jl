@@ -161,9 +161,7 @@ function viz!(sim; f=nothing, duration=nothing, step=0.1, remeasure=true, verbos
     update_render_fn = nothing  # populated below when pathlines=true
 
     function update_data()
-        if pathlines
-            update_render_fn(sim)
-        else
+        if !pathlines
             f(dat, sim)
             mirror_sym!(σ_buf, WaterLily.squeeze(@view dat[CIs]), sym)
             σ[] = σ_buf
@@ -175,7 +173,13 @@ function viz!(sim; f=nothing, duration=nothing, step=0.1, remeasure=true, verbos
         end
     end
     function step_sim_and_viz!(sim, tᵢ)
-        sim_step!(sim, tᵢ; remeasure, udf, udf_kwargs...)
+        if pathlines; while sim_time(sim) < tᵢ
+            sim_step!(sim; remeasure, udf, udf_kwargs...)
+            a = @allocated update_render_fn(sim)
+            println("pathlines update = $a allocations")
+        end; else
+            sim_step!(sim, tᵢ; remeasure, udf, udf_kwargs...)
+        end
         verbose && sim_info(sim)
         update_data()
     end
@@ -249,7 +253,7 @@ function viz!(sim; f=nothing, duration=nothing, step=0.1, remeasure=true, verbos
         plot_body_obs!(ax, σb_obs; color=body_color)
     end
 
-    _fig_steppers[fig] = t -> step_sim_and_viz!(sim, t)
+    _fig_steppers[fig] = (sim,t) -> step_sim_and_viz!(sim, t)
 
     if !isnothing(duration) # time loop for animation
         t₀ = round(WaterLily.sim_time(sim))
@@ -287,9 +291,9 @@ Equivalent to one frame of `viz!`'s animation loop, but callable from user code.
 Call `viz!(sim)` without a `duration` to set up the figure, then drive it manually
 with `viz_step!` inside your own loop for interactive or event-driven animations.
 """
-function viz_step!(fig, t)
+function viz_step!(fig, sim, t)
     haskey(_fig_steppers, fig) || error("No viz! state for this figure — call viz!(sim) without a duration first.")
-    _fig_steppers[fig](t)
+    _fig_steppers[fig](sim, t)
 end
 
 function viz!(sim, a::AbstractArray; kwargs...)
