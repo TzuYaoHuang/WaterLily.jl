@@ -45,7 +45,7 @@ function _pathlines_setup(sim;
         copyto!(pos, p.position)
         copyto!(pos⁰, p.position⁰)
         dt = Float32(sim.flow.Δt[end-1])
-        Pathlines.fade!(pc, dt*sim.L/sim.U)
+        Pathlines.fade!(pc, dt*sim.U/sim.L)
         Pathlines.draw!(pc, pos, pos⁰, dt)
         Makie.notify(ocanvas)
     end
