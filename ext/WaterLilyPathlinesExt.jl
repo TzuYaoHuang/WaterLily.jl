@@ -29,6 +29,8 @@ function _pathlines_setup(sim;
     pc = Pathlines.PathlineCanvas(nx, ny; bgcolor, fadealpha,
                                   colormap, colorrange, figsize, resolution)
     p  = Pathlines.Particles(N, σ; mem, life)
+    pos  = Array(p.position)
+    pos⁰ = Array(p.position⁰)
 
     fig = Makie.Figure(size=pc.figsize)
     ax  = Makie.Axis(fig[1, 1]; autolimitaspect=1, limits=(1, nx, 1, ny))
@@ -39,11 +41,11 @@ function _pathlines_setup(sim;
     function update_fn(sim)
         # Δt[end-1] is used by Particles.update! — skip if sim hasn't stepped yet
         length(sim.flow.Δt) < 2 && return
-        Pathlines.fade!(pc)
         Pathlines.update!(p, sim)
-        pos  = Array(p.position)
-        pos⁰ = Array(p.position⁰)
-        dt   = Float32(sim.flow.Δt[end-1])
+        copyto!(pos, p.position)
+        copyto!(pos⁰, p.position⁰)
+        dt = Float32(sim.flow.Δt[end-1])
+        Pathlines.fade!(pc, dt)
         Pathlines.draw!(pc, pos, pos⁰, dt)
         Makie.notify(ocanvas)
     end
