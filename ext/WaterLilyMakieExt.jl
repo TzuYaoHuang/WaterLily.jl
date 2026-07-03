@@ -3,7 +3,10 @@ module WaterLilyMakieExt
 using Makie, WaterLily, ForwardDiff, Printf
 using Makie.GeometryBasics, Makie.PlotUtils
 using ForwardDiff: Dual, value
-import WaterLily: viz!, get_body, plot_body_obs!
+import WaterLily: viz!, viz_step!, get_body, plot_body_obs!
+
+# Stepper registry for viz_step!: maps figure → step closure
+const _fig_steppers = IdDict{Any, Function}()
 
 """
     update_body!(a_cpu::Array, sim)
@@ -246,6 +249,8 @@ function viz!(sim; f=nothing, duration=nothing, step=0.1, remeasure=true, verbos
         plot_body_obs!(ax, σb_obs; color=body_color)
     end
 
+    _fig_steppers[fig] = t -> step_sim_and_viz!(sim, t)
+
     if !isnothing(duration) # time loop for animation
         t₀ = round(WaterLily.sim_time(sim))
         if !isnothing(video)
@@ -274,6 +279,19 @@ function viz!(sim; f=nothing, duration=nothing, step=0.1, remeasure=true, verbos
     report_img(img_name, img_fmt)
     return fig, ax
 end
+"""
+    viz_step!(fig, t)
+
+Advance the simulation and visualization associated with `fig` to absolute time `t`.
+Equivalent to one frame of `viz!`'s animation loop, but callable from user code.
+Call `viz!(sim)` without a `duration` to set up the figure, then drive it manually
+with `viz_step!` inside your own loop for interactive or event-driven animations.
+"""
+function viz_step!(fig, t)
+    haskey(_fig_steppers, fig) || error("No viz! state for this figure — call viz!(sim) without a duration first.")
+    _fig_steppers[fig](t)
+end
+
 function viz!(sim, a::AbstractArray; kwargs...)
     kwargs = remove_kwargs(:f, :duration; kwargs...) # do not allow co-visualization (is not a simulation)
     @assert size(a) == size(sim.flow.σ) "Visualized array needs to be a scalar and same size as Simulation."
