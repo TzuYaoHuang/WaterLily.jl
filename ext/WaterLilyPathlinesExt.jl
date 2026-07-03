@@ -3,7 +3,7 @@ module WaterLilyPathlinesExt
 using WaterLily, Pathlines, Makie
 
 """
-    _pathlines_setup(sim; N, life, mem, bgcolor, fadealpha, colormap, colorrange,
+    _pathlines_setup(sim; N, life, mem, bgcolor, fadetau, colormap, colorrange,
                           figsize, resolution, kwargs...)
 
 Called by `WaterLilyMakieExt.viz!` when Pathlines is loaded.  Creates a
@@ -18,7 +18,7 @@ Body visualization and the animation loop are handled entirely by
 """
 function _pathlines_setup(sim;
         N=10_000, life=UInt(255), mem=Array,
-        bgcolor=:black, fadealpha=0.2,
+        bgcolor=:black, fadetau=0.2,
         colormap=:plasma, colorrange=(0, 3),
         figsize=nothing, resolution=nothing,
         kwargs...)   # absorb viz! kwargs irrelevant to pathlines
@@ -26,7 +26,7 @@ function _pathlines_setup(sim;
     σ      = sim.flow.σ
     nx, ny = size(σ, 1) - 2, size(σ, 2) - 2
 
-    pc = Pathlines.PathlineCanvas(nx, ny; bgcolor, fadealpha,
+    pc = Pathlines.PathlineCanvas(nx, ny; bgcolor, fadetau,
                                   colormap, colorrange, figsize, resolution)
     p  = Pathlines.Particles(N, σ; mem, life)
     pos  = Array(p.position)
@@ -45,7 +45,7 @@ function _pathlines_setup(sim;
         copyto!(pos, p.position)
         copyto!(pos⁰, p.position⁰)
         dt = Float32(sim.flow.Δt[end-1])
-        Pathlines.fade!(pc, dt)
+        Pathlines.fade!(pc, dt*sim.L/sim.U)
         Pathlines.draw!(pc, pos, pos⁰, dt)
         Makie.notify(ocanvas)
     end
