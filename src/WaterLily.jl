@@ -199,9 +199,11 @@ export viz!, get_body, plot_body_obs!
     check_nthreads()
 
 Check the number of threads available for the Julia session that loads WaterLily.
+Called from `__init__`; skipped during package precompilation (which always runs with one thread).
 A warning is shown when running in serial (JULIA_NUM_THREADS=1) with KernelAbstractions enabled.
 """
 function check_nthreads()
+    Base.generating_output(true) && return nothing
     if backend == "KernelAbstractions" && Threads.nthreads() == 1
         @warn """
         Using WaterLily in serial (ie. JULIA_NUM_THREADS=1) is not recommended because it defaults to serial CPU execution.
@@ -209,7 +211,12 @@ function check_nthreads()
         For a low-overhead single-threaded CPU only backend set: WaterLily.set_backend("SIMD")
         """
     end
+    return nothing
 end
-check_nthreads()
+
+function __init__()
+    check_nthreads()
+    return nothing
+end
 
 end # module
