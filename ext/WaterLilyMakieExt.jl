@@ -290,7 +290,7 @@ Equivalent to one frame of `viz!`'s animation loop, but callable from user code.
 Call `viz!(sim)` without a `duration` to set up the figure, then drive it manually
 with `viz_step!` inside your own loop for interactive or event-driven animations.
 """
-function viz_step!(fig, sim, t)
+function viz_step!(fig, sim, t=sim_time(sim)+0.1)
     haskey(_fig_steppers, fig) || error("No viz! state for this figure — call viz!(sim) without a duration first.")
     _fig_steppers[fig](sim, t)
 end
