@@ -203,7 +203,7 @@ Called from `__init__`; skipped during package precompilation (which always runs
 A warning is shown when running in serial (JULIA_NUM_THREADS=1) with KernelAbstractions enabled.
 """
 function check_nthreads()
-    Base.generating_output(true) && return nothing
+    Base.generating_output() && return nothing
     if backend == "KernelAbstractions" && Threads.nthreads() == 1
         @warn """
         Using WaterLily in serial (ie. JULIA_NUM_THREADS=1) is not recommended because it defaults to serial CPU execution.
@@ -211,12 +211,8 @@ function check_nthreads()
         For a low-overhead single-threaded CPU only backend set: WaterLily.set_backend("SIMD")
         """
     end
-    return nothing
 end
 
-function __init__()
-    check_nthreads()
-    return nothing
-end
-
+__init__() = check_nthreads()
+    
 end # module
