@@ -3,7 +3,7 @@ $(README)
 """
 module WaterLily
 
-using DocStringExtensions
+using DocStringExtensions, Printf
 
 abstract type AbstractSimulation end
 
