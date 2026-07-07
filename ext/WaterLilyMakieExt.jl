@@ -293,6 +293,7 @@ with `viz_step!` inside your own loop for interactive or event-driven animations
 function viz_step!(fig, sim, t=sim_time(sim)+0.1)
     haskey(_fig_steppers, fig) || error("No viz! state for this figure — call viz!(sim) without a duration first.")
     _fig_steppers[fig](sim, t)
+    yield() # allow Makie to update the figure
 end
 
 function viz!(sim, a::AbstractArray; kwargs...)
