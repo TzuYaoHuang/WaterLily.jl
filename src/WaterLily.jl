@@ -152,7 +152,7 @@ end
     sim_info(sim::AbstractSimulation)
 Prints information on the current state of a simulation.
 """
-sim_info(sim::AbstractSimulation) = println("tU/L=",round(sim_time(sim),digits=4),", Δt=",round(sim.flow.Δt[end],digits=3))
+sim_info(sim::AbstractSimulation) = @printf "tU/L=%.4f, Δt=%.3f\n" sim_time(sim) sim.flow.Δt[end]
 
 """
     perturb!(sim; noise=0.1)
