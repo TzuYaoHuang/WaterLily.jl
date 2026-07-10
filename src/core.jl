@@ -20,7 +20,7 @@ function logger(fname::String="WaterLily")
     end;
     global_logger(logger);
     # put header in file
-    @log "p/c, iter, r∞, r₂, ω\n"
+    @log "p/c, iter, r∞, r₁, ω\n"
 end
 
 @inline CI(a...) = CartesianIndex(a...)
