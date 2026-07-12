@@ -23,8 +23,8 @@ function _pathlines_setup(sim;
         figsize=nothing, resolution=nothing,
         kwargs...)   # absorb viz! kwargs irrelevant to pathlines
 
-    σ      = sim.flow.σ
-    nx, ny = size(σ, 1) - 2, size(σ, 2) - 2
+    σ = sim.flow.σ
+    nx, ny = size(inside(σ))
 
     pc = Pathlines.PathlineCanvas(nx, ny; bgcolor, fadetau,
                                   colormap, colorrange, figsize, resolution)

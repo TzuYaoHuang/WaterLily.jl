@@ -183,11 +183,11 @@ function viz!(sim; f=nothing, duration=nothing, step=0.1, remeasure=true, verbos
         update_data()
     end
 
-    d==2 && !pathlines && (@assert !(body2mesh) "body2mesh only allowed for 3D plots (d=3).")
+    d==2 && @assert !body2mesh "body2mesh only allowed for 3D plots (d=3)."
     body2mesh && (@assert !isnothing(Base.get_extension(WaterLily, :WaterLilyMeshingExt)) "If body2mesh=true, Meshing must be loaded.")
     img_name, img_backend, img_fmt = parse_img(img) # validate and unpack the image spec; img_fmt set => save one image per frame
     D = ndims(sim.flow.σ)
-    !pathlines && @assert d <= D "Cannot do a 3D plot on a 2D simulation."
+    @assert d <= D "Cannot do a 3D plot on a 2D simulation."
     !isnothing(sym) && @assert length(sym) == d "sym kwarg must have length equal to plot dimension d=$d, got $(length(sym))."
     !isnothing(udf) && !isnothing(udf_kwargs) && (@assert all(isa(kw, Pair{Symbol}) for kw in udf_kwargs) "udf_kwargs needs to contain Pair{Symbol,Any} elements, eg. Dict{Symbol,Any}.")
     isnothing(udf) && (udf_kwargs=[])
